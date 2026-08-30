@@ -1,0 +1,18 @@
+{
+  "categories": [
+    {
+      "id": "cat-advogado-01",
+      "name": "Advogado Ensaio 01",
+      "description": "Ensaio fotográfico profissional para advogados, escritórios jurídicos e autoridades do direito.",
+      "coverUrl": "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=800&q=80",
+      "createdAt": "2026-08-29T13:05:22.546Z"
+    }
+  ],
+  "modelPhotos": [],
+  "clients": [],
+  "apiSettings": {
+    "geminiApiKey": "",
+    "keyTier": "Gratuito"
+  },
+  "packages": []
+}
