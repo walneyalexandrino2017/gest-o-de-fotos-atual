@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 
 dotenv.config();
 
@@ -16,10 +16,13 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
-// Check if Vercel KV environment variables are present
-const isKvConfigured = Boolean(
-  process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
-);
+// Initialize Upstash Redis if environment variables are present
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+
+const redis = (redisUrl && redisToken)
+  ? new Redis({ url: redisUrl, token: redisToken })
+  : null;
 
 // Initial Seed Data
 const INITIAL_CATEGORIES = [
@@ -114,35 +117,38 @@ function persistLocalDb() {
   }
 }
 
-// Persist to KV and/or local disk
+// Persist to Upstash Redis and/or local disk
 async function persistDb() {
-  if (isKvConfigured) {
+  if (redis) {
     try {
-      await kv.set('app_db', memoryStore);
+      await redis.set('app_db', memoryStore);
     } catch (err) {
-      console.error('Erro ao salvar no Vercel KV:', err);
+      console.error('Erro ao salvar no Redis:', err);
     }
   }
   persistLocalDb();
 }
 
-// Load from KV or fallback to local disk
+// Load from Upstash Redis or fallback to memory
 async function syncFromStore() {
-  if (isKvConfigured) {
+  if (redis) {
     try {
-      const remoteData = await kv.get<ServerStore>('app_db');
-      if (remoteData && typeof remoteData === 'object') {
-        memoryStore = {
-          categories: Array.isArray(remoteData.categories) ? remoteData.categories : INITIAL_CATEGORIES,
-          modelPhotos: Array.isArray(remoteData.modelPhotos) ? remoteData.modelPhotos : [],
-          clients: Array.isArray(remoteData.clients) ? remoteData.clients : [],
-          apiSettings: remoteData.apiSettings || { geminiApiKey: '', keyTier: 'Gratuito' },
-          packages: Array.isArray(remoteData.packages) ? remoteData.packages : [],
-        };
-        return;
+      const remoteData = await redis.get<ServerStore | string>('app_db');
+      if (remoteData) {
+        const parsedData: ServerStore = typeof remoteData === 'string' ? JSON.parse(remoteData) : remoteData;
+        if (parsedData && typeof parsedData === 'object') {
+          memoryStore = {
+            categories: Array.isArray(parsedData.categories) ? parsedData.categories : INITIAL_CATEGORIES,
+            modelPhotos: Array.isArray(parsedData.modelPhotos) ? parsedData.modelPhotos : [],
+            clients: Array.isArray(parsedData.clients) ? parsedData.clients : [],
+            apiSettings: parsedData.apiSettings || { geminiApiKey: '', keyTier: 'Gratuito' },
+            packages: Array.isArray(parsedData.packages) ? parsedData.packages : [],
+          };
+          return;
+        }
       }
     } catch (err) {
-      console.error('Erro ao ler do Vercel KV:', err);
+      console.error('Erro ao ler do Redis:', err);
     }
   }
 }
@@ -155,9 +161,9 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Middleware to keep KV synced in serverless environments
+// Middleware to keep Redis synced in serverless environments
 app.use(async (req, res, next) => {
-  if (isKvConfigured) {
+  if (redis) {
     await syncFromStore();
   }
   next();
