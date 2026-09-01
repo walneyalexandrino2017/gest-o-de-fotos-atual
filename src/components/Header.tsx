@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Settings, Sparkles, Key, Menu } from 'lucide-react';
+import { Camera, Settings, LogOut, Menu } from 'lucide-react';
 import { getApiSettings } from '../utils/storage';
 import { ApiSettingsModal } from './ApiSettingsModal';
 
@@ -7,12 +7,14 @@ interface HeaderProps {
   onToggleSidebar?: () => void;
   activeViewTitle: string;
   onOpenApiSettings?: () => void;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onToggleSidebar,
   activeViewTitle,
   onOpenApiSettings,
+  onLogout,
 }) => {
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState(getApiSettings());
@@ -69,7 +71,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Side: API Key status indicator + Settings Button */}
+        {/* Right Side: API Key status indicator + Settings Button + Logout */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Key Tier & Status Badge */}
           <button
@@ -109,6 +111,19 @@ export const Header: React.FC<HeaderProps> = ({
             <Settings className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
             <span className="hidden md:inline">Configurações</span>
           </button>
+
+          {/* Logout Button */}
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-900/60 rounded-xl shadow-2xs transition-all active:scale-98 cursor-pointer"
+              title="Sair do painel administrativo"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden md:inline">Sair</span>
+            </button>
+          )}
         </div>
       </header>
 

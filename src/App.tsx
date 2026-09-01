@@ -14,6 +14,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { PublicSelectionPage } from './components/public/PublicSelectionPage';
 import { PublicDeliveryPage } from './components/public/PublicDeliveryPage';
 import { PublicModelosPage } from './components/public/PublicModelosPage';
+import { LoginPage } from './components/LoginPage';
 import { getCategories, getModelPhotos, getClients, syncDataFromServer } from './utils/storage';
 import { Category, ModelPhoto, Client } from './types';
 
@@ -33,6 +34,12 @@ export default function App() {
   const [isApiSettingsModalOpen, setIsApiSettingsModalOpen] = useState(false);
   const [isPackageManagementModalOpen, setIsPackageManagementModalOpen] = useState(false);
 
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return Boolean(localStorage.getItem('admin_token'));
+  });
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+
   // App Data
   const [categories, setCategories] = useState<Category[]>([]);
   const [modelPhotos, setModelPhotos] = useState<ModelPhoto[]>([]);
@@ -51,7 +58,7 @@ export default function App() {
     const search = window.location.search;
     const urlParams = new URLSearchParams(search);
 
-    // 1. Hash-based routes (Best for Netlify SPA without server rewrites)
+    // 1. Hash-based routes (Best for Netlify / Vercel SPA without server rewrites)
     if (hash.startsWith('#/selecao/')) {
       const token = hash.replace('#/selecao/', '').split('?')[0];
       setRoute({ type: 'public_selection', token });
@@ -87,6 +94,50 @@ export default function App() {
 
     // Default: Admin panel
     setRoute({ type: 'admin' });
+  };
+
+  // Verify auth session token with backend
+  useEffect(() => {
+    const verifyAuth = async () => {
+      const savedToken = localStorage.getItem('admin_token');
+      if (!savedToken) {
+        setIsAuthenticated(false);
+        setIsCheckingAuth(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/verify-session?token=${encodeURIComponent(savedToken)}`, {
+          headers: {
+            Authorization: `Bearer ${savedToken}`,
+          },
+        });
+        const data = await res.json();
+        if (res.ok && data.valid) {
+          setIsAuthenticated(true);
+        } else {
+          localStorage.removeItem('admin_token');
+          setIsAuthenticated(false);
+        }
+      } catch {
+        // Fallback to local token presence if offline or local
+        setIsAuthenticated(Boolean(savedToken));
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    verifyAuth();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch {
+      // ignore
+    }
+    localStorage.removeItem('admin_token');
+    setIsAuthenticated(false);
   };
 
   useEffect(() => {
@@ -163,6 +214,28 @@ export default function App() {
     return <PublicModelosPage />;
   }
 
+  // If Admin route and not authenticated, show Login page
+  if (route.type === 'admin') {
+    if (isCheckingAuth) {
+      return (
+        <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
+    }
+
+    if (!isAuthenticated) {
+      return (
+        <LoginPage
+          onLoginSuccess={(token) => {
+            setIsAuthenticated(true);
+            syncDataFromServer().then(() => loadData());
+          }}
+        />
+      );
+    }
+  }
+
   // Titles for current active view
   const VIEW_TITLES: Record<NavView, string> = {
     dashboard: 'Visão Geral e Métricas do Estúdio',
@@ -198,6 +271,7 @@ export default function App() {
             onToggleSidebar={() => setIsSidebarOpenMobile(!isSidebarOpenMobile)}
             activeViewTitle={VIEW_TITLES[currentView]}
             onOpenApiSettings={() => setIsApiSettingsModalOpen(true)}
+            onLogout={handleLogout}
           />
 
           {/* Main View Container with mobile bottom bar clearance */}

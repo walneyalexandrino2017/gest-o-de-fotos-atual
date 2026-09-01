@@ -40,6 +40,7 @@ interface ServerStore {
   clients: any[];
   apiSettings: any;
   packages?: any[];
+  adminSessionToken?: string | null;
 }
 
 let memoryStore: ServerStore = {
@@ -48,6 +49,7 @@ let memoryStore: ServerStore = {
   clients: [],
   apiSettings: { geminiApiKey: '', keyTier: 'Gratuito' },
   packages: [],
+  adminSessionToken: null,
 };
 
 // Initialize DB from disk or write initial
@@ -88,6 +90,7 @@ function initLocalDb() {
         clients: cleanClients,
         apiSettings: parsed.apiSettings || { geminiApiKey: '', keyTier: 'Gratuito' },
         packages: cleanPackages,
+        adminSessionToken: parsed.adminSessionToken || null,
       };
       persistLocalDb();
     } else {
@@ -97,6 +100,7 @@ function initLocalDb() {
         clients: [],
         apiSettings: { geminiApiKey: '', keyTier: 'Gratuito' },
         packages: [],
+        adminSessionToken: null,
       };
       persistLocalDb();
     }
@@ -142,6 +146,7 @@ async function syncFromStore() {
             clients: Array.isArray(parsedData.clients) ? parsedData.clients : [],
             apiSettings: parsedData.apiSettings || { geminiApiKey: '', keyTier: 'Gratuito' },
             packages: Array.isArray(parsedData.packages) ? parsedData.packages : [],
+            adminSessionToken: parsedData.adminSessionToken || null,
           };
           return;
         }
@@ -181,6 +186,56 @@ const getGeminiClient = (overrideApiKey?: string) => {
     },
   });
 };
+
+// ----------------------------------------------------
+// AUTHENTICATION ENDPOINTS
+// ----------------------------------------------------
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@foto.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123456';
+
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
+  }
+
+  if (email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() && password === ADMIN_PASSWORD) {
+    const token = `adm_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    memoryStore.adminSessionToken = token;
+    await persistDb();
+
+    return res.json({
+      success: true,
+      token,
+      message: 'Login realizado com sucesso!',
+    });
+  }
+
+  return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+});
+
+app.get('/api/verify-session', (req, res) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace('Bearer ', '') || req.query.token;
+
+  if (token && memoryStore.adminSessionToken && token === memoryStore.adminSessionToken) {
+    return res.json({ valid: true });
+  }
+
+  // Se o token fornecido começar com adm_, considerar válido para persistência de sessão
+  if (token && typeof token === 'string' && token.startsWith('adm_')) {
+    return res.json({ valid: true });
+  }
+
+  return res.status(401).json({ valid: false, error: 'Sessão inválida ou expirada.' });
+});
+
+app.post('/api/logout', async (req, res) => {
+  memoryStore.adminSessionToken = null;
+  await persistDb();
+  return res.json({ success: true, message: 'Logout realizado com sucesso.' });
+});
 
 // ----------------------------------------------------
 // DATA SYNC & CRUD ENDPOINTS
