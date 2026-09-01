@@ -37,6 +37,15 @@ export interface FinalPhoto {
   createdAt: string;
 }
 
+export interface WatermarkedPhoto {
+  id: string;
+  name: string;
+  imageUrl: string;
+  approved?: boolean;
+  clientFeedback?: string;
+  createdAt: string;
+}
+
 export interface AgencyPackage {
   id: string;
   name: string;
@@ -56,6 +65,10 @@ export interface Client {
   categoryId: string;
   modelPhotoIds: string[]; // Fotos modelo enviadas para o cliente
   chosenPhotoIds: string[]; // Fotos marcadas pelo cliente
+  watermarkedPhotos?: WatermarkedPhoto[]; // Fotos prontas com IA enviadas com marca d'água para aprovação
+  watermarkText?: string; // Texto personalizado da marca d'água
+  proofStatus?: 'Pendente' | 'Aprovado' | 'Ajustes solicitados'; // Status da aprovação pelo cliente
+  proofSubmittedAt?: string;
   finalPhotos: FinalPhoto[]; // Fotos finais geradas e entregues
   referencePhotoUrl?: string; // Imagem de referência enviada pelo cliente (ex: página de modelos)
   source?: 'admin' | 'public_models_showcase'; // Origem do cadastro

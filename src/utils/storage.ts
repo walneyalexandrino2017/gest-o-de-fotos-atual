@@ -1,4 +1,4 @@
-import { Category, ModelPhoto, Client, ApiSettings, AgencyPackage } from '../types';
+import { Category, ModelPhoto, Client, ApiSettings, AgencyPackage, WatermarkedPhoto } from '../types';
 
 const STORAGE_KEYS = {
   CATEGORIES: 'photo_management_categories',
@@ -438,6 +438,87 @@ export const fetchPublicDeliveryData = async (token: string): Promise<Client | n
   }
 
   return getClientByToken(token) || null;
+};
+
+// Asynchronous public fetchers for Watermarked Photos / Proofing
+export const fetchPublicProofData = async (
+  token: string
+): Promise<{ client: Client; packages?: AgencyPackage[] } | null> => {
+  try {
+    const res = await fetch(`/api/public/proof/${token}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.client) {
+        const clients = getClients();
+        const existingIdx = clients.findIndex((c) => c.id === data.client.id);
+        if (existingIdx >= 0) {
+          clients[existingIdx] = data.client;
+        } else {
+          clients.unshift(data.client);
+        }
+        memoryClients = clients;
+        try {
+          localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clients));
+        } catch (_) {}
+
+        if (data.packages && Array.isArray(data.packages)) {
+          memoryPackages = data.packages;
+          try {
+            localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(data.packages));
+          } catch (_) {}
+        }
+
+        return {
+          client: data.client,
+          packages: data.packages || getAgencyPackages(),
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Server proof fetch failed, checking local storage:', err);
+  }
+
+  const localClient = getClientByToken(token);
+  if (localClient) {
+    return { client: localClient, packages: getAgencyPackages() };
+  }
+
+  return null;
+};
+
+export const submitPublicProofData = async (
+  token: string,
+  watermarkedPhotos: WatermarkedPhoto[]
+): Promise<Client | null> => {
+  try {
+    const res = await fetch(`/api/public/proof/${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ watermarkedPhotos }),
+    });
+
+    if (res.ok) {
+      const result = await res.json();
+      if (result.client) {
+        updateClientByToken(token, () => result.client);
+        return result.client;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to submit proof to server API, updating local storage:', err);
+  }
+
+  const hasAdjustments = watermarkedPhotos.some((p) => (p.clientFeedback || '').trim().length > 0 && !p.approved);
+  const proofStatus = hasAdjustments ? 'Ajustes solicitados' : 'Aprovado';
+
+  const updated = updateClientByToken(token, (c) => ({
+    ...c,
+    watermarkedPhotos,
+    proofStatus,
+    proofSubmittedAt: new Date().toISOString(),
+  }));
+
+  return updated || null;
 };
 
 export interface PublicModelosData {

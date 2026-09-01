@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Settings, Sparkles, Key, Menu } from 'lucide-react';
+import { Camera, Settings, Sparkles, Key, Menu, LogOut, User } from 'lucide-react';
 import { getApiSettings } from '../utils/storage';
 import { ApiSettingsModal } from './ApiSettingsModal';
+import { getAuthState, logoutUser } from '../utils/auth';
 
 interface HeaderProps {
   onToggleSidebar?: () => void;
@@ -108,6 +109,17 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Settings className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
             <span className="hidden md:inline">Configurações</span>
+          </button>
+
+          {/* Logout button */}
+          <button
+            type="button"
+            onClick={() => logoutUser()}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 rounded-xl transition-all cursor-pointer"
+            title="Sair do painel de administração"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Sair</span>
           </button>
         </div>
       </header>

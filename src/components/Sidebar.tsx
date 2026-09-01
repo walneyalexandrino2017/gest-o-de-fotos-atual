@@ -5,6 +5,7 @@ import {
   Users,
   ImagePlus,
   HeartHandshake,
+  ShieldAlert,
   PackageCheck,
   X,
   ExternalLink,
@@ -12,9 +13,12 @@ import {
   Settings,
   Key,
   Tag,
+  LogOut,
+  User,
 } from 'lucide-react';
 import { Client } from '../types';
 import { getApiSettings } from '../utils/storage';
+import { getAuthState, logoutUser } from '../utils/auth';
 
 export type NavView =
   | 'dashboard'
@@ -22,6 +26,7 @@ export type NavView =
   | 'clients'
   | 'upload_models'
   | 'chosen_photos'
+  | 'watermarked_photos'
   | 'final_delivery';
 
 interface SidebarProps {
@@ -57,6 +62,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Compute badge counts according to proper workflow steps
   const awaitingSelectionCount = clients.filter((c) => c.status === 'Aguardando seleção').length;
   const chosenPhotosCount = clients.filter((c) => c.status === 'Selecionado').length;
+  const watermarkedPendingCount = clients.filter(
+    (c) =>
+      c.watermarkedPhotos &&
+      c.watermarkedPhotos.length > 0 &&
+      (c.proofStatus === 'Ajustes solicitados' || c.proofStatus === 'Pendente')
+  ).length;
   const inProductionCount = clients.filter((c) => c.status === 'Em produção').length;
 
   const menuItems = [
@@ -93,6 +104,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: HeartHandshake,
       badge: chosenPhotosCount > 0 ? chosenPhotosCount : undefined,
       badgeColor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+    },
+    {
+      id: 'watermarked_photos' as NavView,
+      label: '5.1 Fotos com Marca D\'agua',
+      subtitle: 'Upload fotos IA & aprovações',
+      icon: ShieldAlert,
+      badge: watermarkedPendingCount > 0 ? watermarkedPendingCount : undefined,
+      badgeColor: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
     },
     {
       id: 'final_delivery' as NavView,
@@ -278,13 +297,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </a>
         </div>
 
+        {/* User Account & Logout */}
+        <div className="p-3 border-t border-zinc-800 mx-3 my-2 bg-zinc-950/80 rounded-xl flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-amber-600/30 border border-amber-500/40 flex items-center justify-center text-amber-300 font-bold text-xs shrink-0">
+              <User className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-zinc-200 truncate">
+                {getAuthState().user?.email || 'Administrador'}
+              </p>
+              <p className="text-[10px] text-amber-400 font-medium truncate">
+                {getAuthState().user?.role || 'Acesso Autorizado'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              logoutUser();
+            }}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/40 transition-colors shrink-0 cursor-pointer"
+            title="Sair do painel (Logout)"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+
         {/* Footer info box */}
-        <div className="p-3.5 border-t border-zinc-800 m-3 bg-zinc-950/60 rounded-xl">
-          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+        <div className="p-3 border-t border-zinc-800 mx-3 mb-3 bg-zinc-950/40 rounded-xl">
+          <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-0.5">
             <span className="font-medium text-zinc-300">Fluxo do Ensaio:</span>
           </div>
-          <p className="text-[11px] text-zinc-400 leading-tight">
-            Cliente → Categoria → Fotos Modelo → Seleção Pública → Prompt → Entrega .ZIP
+          <p className="text-[10px] text-zinc-400 leading-tight">
+            Cliente → Categoria → Fotos Modelo → Seleção → Prompt → Entrega .ZIP
           </p>
         </div>
       </aside>

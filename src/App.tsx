@@ -9,22 +9,29 @@ import { CategoriesGalleryView } from './components/views/CategoriesGalleryView'
 import { ClientsView } from './components/views/ClientsView';
 import { UploadModelPhotosView } from './components/views/UploadModelPhotosView';
 import { ChosenPhotosView } from './components/views/ChosenPhotosView';
+import { WatermarkedPhotosView } from './components/views/WatermarkedPhotosView';
 import { FinalDeliveryView } from './components/views/FinalDeliveryView';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PublicSelectionPage } from './components/public/PublicSelectionPage';
+import { PublicWatermarkedPage } from './components/public/PublicWatermarkedPage';
 import { PublicDeliveryPage } from './components/public/PublicDeliveryPage';
 import { PublicModelosPage } from './components/public/PublicModelosPage';
+import { LoginPage } from './components/LoginPage';
 import { getCategories, getModelPhotos, getClients, syncDataFromServer } from './utils/storage';
+import { getAuthState, subscribeToAuth } from './utils/auth';
 import { Category, ModelPhoto, Client } from './types';
 
 export default function App() {
   // Navigation & Route states
   const [route, setRoute] = useState<{
-    type: 'admin' | 'public_selection' | 'public_delivery' | 'public_modelos';
+    type: 'admin' | 'public_selection' | 'public_delivery' | 'public_proof' | 'public_modelos';
     token?: string;
   }>({
     type: 'admin',
   });
+
+  // Authentication State
+  const [authState, setAuthState] = useState(getAuthState());
 
   const [currentView, setCurrentView] = useState<NavView>('dashboard');
   const [isSidebarOpenMobile, setIsSidebarOpenMobile] = useState(false);
@@ -57,6 +64,16 @@ export default function App() {
       setRoute({ type: 'public_selection', token });
       return;
     }
+    if (hash.startsWith('#/aprovacao/')) {
+      const token = hash.replace('#/aprovacao/', '').split('?')[0];
+      setRoute({ type: 'public_proof', token });
+      return;
+    }
+    if (hash.startsWith('#/marca-dagua/')) {
+      const token = hash.replace('#/marca-dagua/', '').split('?')[0];
+      setRoute({ type: 'public_proof', token });
+      return;
+    }
     if (hash.startsWith('#/entrega/')) {
       const token = hash.replace('#/entrega/', '').split('?')[0];
       setRoute({ type: 'public_delivery', token });
@@ -74,6 +91,14 @@ export default function App() {
     // 2. Query param based routes fallback
     if (urlParams.get('selecao')) {
       setRoute({ type: 'public_selection', token: urlParams.get('selecao') || '' });
+      return;
+    }
+    if (urlParams.get('aprovacao')) {
+      setRoute({ type: 'public_proof', token: urlParams.get('aprovacao') || '' });
+      return;
+    }
+    if (urlParams.get('marca-dagua')) {
+      setRoute({ type: 'public_proof', token: urlParams.get('marca-dagua') || '' });
       return;
     }
     if (urlParams.get('entrega')) {
@@ -122,8 +147,13 @@ export default function App() {
     window.addEventListener('focus', handleFocusOrVisible);
     document.addEventListener('visibilitychange', handleFocusOrVisible);
 
+    const unsubscribeAuth = subscribeToAuth(() => {
+      setAuthState(getAuthState());
+    });
+
     return () => {
       clearInterval(syncInterval);
+      unsubscribeAuth();
       window.removeEventListener('app_storage_updated', handleStorageUpdate);
       window.removeEventListener('storage', handleStorageUpdate);
       window.removeEventListener('hashchange', handleHashChange);
@@ -153,6 +183,11 @@ export default function App() {
     return <PublicSelectionPage token={route.token} />;
   }
 
+  // If Public Proof / Watermarked Photos Approval Page
+  if (route.type === 'public_proof' && route.token) {
+    return <PublicWatermarkedPage token={route.token} />;
+  }
+
   // If Public Final Delivery Page
   if (route.type === 'public_delivery' && route.token) {
     return <PublicDeliveryPage token={route.token} />;
@@ -163,6 +198,15 @@ export default function App() {
     return <PublicModelosPage />;
   }
 
+  // If Admin panel and User is not authenticated -> Show Login Screen
+  if (!authState.isAuthenticated) {
+    return (
+      <ToastProvider>
+        <LoginPage onLoginSuccess={() => setAuthState(getAuthState())} />
+      </ToastProvider>
+    );
+  }
+
   // Titles for current active view
   const VIEW_TITLES: Record<NavView, string> = {
     dashboard: 'Visão Geral e Métricas do Estúdio',
@@ -170,6 +214,7 @@ export default function App() {
     clients: 'Cadastro de Clientes e Links de Seleção',
     upload_models: 'Upload de Imagens Modelo & Prompts de IA',
     chosen_photos: 'Fotos Escolhidas pelos Clientes',
+    watermarked_photos: '5.1 Fotos com Marca D\'água & Aprovação de Prévias',
     final_delivery: 'Upload Final & Entrega em Pacote .ZIP',
   };
 
@@ -241,6 +286,13 @@ export default function App() {
               <ChosenPhotosView
                 clients={clients}
                 modelPhotos={modelPhotos}
+                onNavigate={handleNavigate}
+              />
+            )}
+
+            {currentView === 'watermarked_photos' && (
+              <WatermarkedPhotosView
+                clients={clients}
                 onNavigate={handleNavigate}
               />
             )}

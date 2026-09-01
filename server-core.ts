@@ -348,6 +348,51 @@ app.get('/api/public/delivery/:token', (req, res) => {
   });
 });
 
+// Public Proof / Watermark Review Token Endpoint
+app.get('/api/public/proof/:token', (req, res) => {
+  const { token } = req.params;
+  const client = memoryStore.clients.find((c) => c.token === token);
+  if (!client) {
+    return res.status(404).json({ error: 'Cliente não encontrado para este link de aprovação.' });
+  }
+
+  res.json({
+    client,
+    packages: memoryStore.packages || [],
+  });
+});
+
+// Public Proof Confirmation & Feedback Submit Endpoint
+app.post('/api/public/proof/:token', async (req, res) => {
+  const { token } = req.params;
+  const { watermarkedPhotos } = req.body;
+
+  const index = memoryStore.clients.findIndex((c) => c.token === token);
+  if (index === -1) {
+    return res.status(404).json({ error: 'Cliente não encontrado.' });
+  }
+
+  const client = memoryStore.clients[index];
+  const validPhotos = Array.isArray(watermarkedPhotos) ? watermarkedPhotos : client.watermarkedPhotos || [];
+  const hasAdjustments = validPhotos.some((p: any) => (p.clientFeedback || '').trim().length > 0 && !p.approved);
+  const proofStatus = hasAdjustments ? 'Ajustes solicitados' : 'Aprovado';
+
+  const updatedClient = {
+    ...client,
+    watermarkedPhotos: validPhotos,
+    proofStatus,
+    proofSubmittedAt: new Date().toISOString(),
+  };
+
+  memoryStore.clients[index] = updatedClient;
+  await persistDb();
+
+  res.json({
+    success: true,
+    client: updatedClient,
+  });
+});
+
 // Public Models Gallery / Showcase Endpoint (Modelos de Ensaio Fotográfico)
 app.get('/api/public/modelos', (req, res) => {
   res.json({
@@ -471,6 +516,33 @@ Retorne SOMENTE o texto do prompt pronto para copiar, sem introduções ou expli
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+// Admin Authentication endpoint
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+  const masterEmail = process.env.ADMIN_EMAIL || 'alunodosenai3@gmail.com';
+  const masterPassword = process.env.ADMIN_PASSWORD || 'Tudodebom2026@#';
+
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanPassword = (password || '').trim();
+
+  if (cleanEmail === masterEmail.toLowerCase() && cleanPassword === masterPassword) {
+    return res.json({
+      success: true,
+      user: {
+        email: masterEmail,
+        name: 'Administrador do Estúdio',
+        role: 'Fotógrafo / Diretor Criativo',
+        lastLogin: new Date().toISOString(),
+      },
+    });
+  }
+
+  return res.status(401).json({
+    success: false,
+    error: 'E-mail ou senha incorretos. Verifique suas credenciais e tente novamente.',
+  });
 });
 
 export default app;

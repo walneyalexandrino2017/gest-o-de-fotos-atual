@@ -7,11 +7,13 @@ import {
   Sparkles,
   ArrowRight,
   PackageCheck,
+  ShieldAlert,
   ExternalLink,
   MessageCircle,
   RefreshCw,
   Clock,
   Send,
+  Trash2,
 } from 'lucide-react';
 import { Client, ModelPhoto } from '../../types';
 import { saveClients, syncDataFromServer, getModelPhotos } from '../../utils/storage';
@@ -79,6 +81,23 @@ export const ChosenPhotosView: React.FC<ChosenPhotosViewProps> = ({
 
     navigator.clipboard.writeText(allPrompts);
     showToast(`Todos os ${chosenPhotos.length} prompts de ${client.name} copiados!`, 'success');
+  };
+
+  const handleRemoveChosenPhoto = (client: Client, photoId: string, photoName: string) => {
+    const nextChosen = (client.chosenPhotoIds || []).filter((id) => id !== photoId);
+    const nextStatus = nextChosen.length === 0 && client.status === 'Selecionado' ? 'Aguardando seleção' as const : client.status;
+    const updated = clients.map((c) =>
+      c.id === client.id
+        ? {
+            ...c,
+            chosenPhotoIds: nextChosen,
+            status: nextStatus,
+          }
+        : c
+    );
+    saveClients(updated);
+    syncDataFromServer();
+    showToast(`Foto "${photoName}" removida da seleção de ${client.name}!`, 'success');
   };
 
   const handleMarkInProduction = (client: Client) => {
@@ -236,11 +255,19 @@ export const ChosenPhotosView: React.FC<ChosenPhotosViewProps> = ({
                     )}
 
                     <button
-                      onClick={() => onNavigate('final_delivery')}
+                      onClick={() => onNavigate('watermarked_photos')}
                       className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-all shadow-xs cursor-pointer"
                     >
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      <span>5.1 Fotos com Marca D'água</span>
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('final_delivery')}
+                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-semibold text-zinc-800 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all shadow-xs cursor-pointer"
+                    >
                       <PackageCheck className="w-3.5 h-3.5" />
-                      <span>Ir para Entrega Final</span>
+                      <span>6. Entrega Final</span>
                     </button>
                   </div>
                 </div>
@@ -275,9 +302,19 @@ export const ChosenPhotosView: React.FC<ChosenPhotosViewProps> = ({
 
                           {/* Details */}
                           <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
-                            <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
-                              {photo.name}
-                            </h4>
+                            <div className="flex items-center justify-between gap-1">
+                              <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                                {photo.name}
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveChosenPhoto(client, photo.id, photo.name)}
+                                className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors shrink-0 cursor-pointer"
+                                title="Desvincular / Remover esta foto da seleção deste cliente"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
 
                             <div className="p-2 sm:p-2.5 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
                               <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 block mb-1">
@@ -290,8 +327,8 @@ export const ChosenPhotosView: React.FC<ChosenPhotosViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Bottom Button */}
-                        <div className="p-3 sm:p-4 pt-0">
+                        {/* Bottom Buttons */}
+                        <div className="p-3 sm:p-4 pt-0 space-y-2">
                           <button
                             onClick={() => handleCopyPrompt(photo.prompt, photo.name, client.name)}
                             className="w-full flex items-center justify-center gap-1.5 py-2 px-2.5 text-[11px] sm:text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-all shadow-xs cursor-pointer"

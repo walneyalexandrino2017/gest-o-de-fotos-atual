@@ -29,7 +29,7 @@ import {
   Camera,
 } from 'lucide-react';
 import { Client, ClientStatus, Category, ModelPhoto } from '../../types';
-import { saveClients, deleteClient, generateUniqueToken } from '../../utils/storage';
+import { saveClients, deleteClient, generateUniqueToken, syncDataFromServer } from '../../utils/storage';
 import { useToast } from '../Toast';
 import { NavView } from '../Sidebar';
 import { ConfirmModal } from '../ConfirmModal';
@@ -328,6 +328,57 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
     showToast(`Dados de "${updatedClient.name}" e ensaio atualizados com sucesso!`, 'success');
     setEditingClient(null);
+  };
+
+  const handleRemoveChosenPhotoFromClient = (clientId: string, photoId: string) => {
+    const updatedList = clients.map((c) => {
+      if (c.id === clientId) {
+        const nextChosen = (c.chosenPhotoIds || []).filter((id) => id !== photoId);
+        const nextStatus =
+          nextChosen.length === 0 && c.status === 'Selecionado'
+            ? ('Aguardando seleção' as ClientStatus)
+            : c.status;
+        return {
+          ...c,
+          chosenPhotoIds: nextChosen,
+          status: nextStatus,
+        };
+      }
+      return c;
+    });
+
+    saveClients(updatedList);
+    syncDataFromServer();
+
+    if (clientToViewDetails && clientToViewDetails.id === clientId) {
+      const refreshed = updatedList.find((c) => c.id === clientId);
+      if (refreshed) setClientToViewDetails(refreshed);
+    }
+
+    showToast('Foto removida da seleção do cliente com sucesso!', 'success');
+  };
+
+  const handleClearAllChosenPhotos = (clientId: string) => {
+    const updatedList = clients.map((c) => {
+      if (c.id === clientId) {
+        return {
+          ...c,
+          chosenPhotoIds: [],
+          status: c.status === 'Selecionado' ? ('Aguardando seleção' as ClientStatus) : c.status,
+        };
+      }
+      return c;
+    });
+
+    saveClients(updatedList);
+    syncDataFromServer();
+
+    if (clientToViewDetails && clientToViewDetails.id === clientId) {
+      const refreshed = updatedList.find((c) => c.id === clientId);
+      if (refreshed) setClientToViewDetails(refreshed);
+    }
+
+    showToast('Todas as escolhas de fotos foram desvinculadas!', 'success');
   };
 
   return (
@@ -1224,23 +1275,34 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Fotos Modelo Escolhidas & Prompts */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-500" />
                     <span>Fotos Modelo Escolhidas ({clientToViewDetails.chosenPhotoIds.length})</span>
                   </h3>
                   {clientToViewDetails.chosenPhotoIds.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setClientToViewDetails(null);
-                        onNavigate('chosen_photos');
-                      }}
-                      className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Ir para aba Fotos Escolhidas</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleClearAllChosenPhotos(clientToViewDetails.id)}
+                        className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        title="Desvincular todas as fotos selecionadas deste cliente"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Desvincular Todas</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientToViewDetails(null);
+                          onNavigate('chosen_photos');
+                        }}
+                        className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Ir para aba Fotos Escolhidas</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -1272,9 +1334,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             />
                           </div>
                           <div className="flex-1 min-w-0 space-y-1">
-                            <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
-                              {photo.name}
-                            </p>
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                                {photo.name}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveChosenPhotoFromClient(clientToViewDetails.id, photo.id)}
+                                className="p-1 rounded-md text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors shrink-0 cursor-pointer"
+                                title="Desvincular / Remover esta foto da seleção deste cliente"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                             {cat && (
                               <span className="text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-200 dark:bg-zinc-700 px-1.5 py-0.2 rounded">
                                 {cat.name}
