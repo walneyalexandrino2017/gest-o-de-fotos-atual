@@ -48,6 +48,16 @@ const STATUS_BADGE_STYLES: Record<ClientStatus, { bg: string; text: string; bord
     text: 'text-zinc-700 dark:text-zinc-300',
     border: 'border-zinc-300 dark:border-zinc-700',
   },
+  Pendente: {
+    bg: 'bg-zinc-100 dark:bg-zinc-800',
+    text: 'text-zinc-700 dark:text-zinc-300',
+    border: 'border-zinc-300 dark:border-zinc-700',
+  },
+  Enviado: {
+    bg: 'bg-blue-50 dark:bg-blue-950/60',
+    text: 'text-blue-700 dark:text-blue-300',
+    border: 'border-blue-200 dark:border-blue-800',
+  },
   'Aguardando seleção': {
     bg: 'bg-amber-50 dark:bg-amber-950/60',
     text: 'text-amber-700 dark:text-amber-300',
@@ -57,6 +67,16 @@ const STATUS_BADGE_STYLES: Record<ClientStatus, { bg: string; text: string; bord
     bg: 'bg-emerald-50 dark:bg-emerald-950/60',
     text: 'text-emerald-700 dark:text-emerald-300',
     border: 'border-emerald-200 dark:border-emerald-800',
+  },
+  'Aguardando Aprovação Final': {
+    bg: 'bg-amber-50 dark:bg-amber-950/60',
+    text: 'text-amber-700 dark:text-amber-300',
+    border: 'border-amber-200 dark:border-amber-800',
+  },
+  'Em Edição': {
+    bg: 'bg-purple-50 dark:bg-purple-950/60',
+    text: 'text-purple-700 dark:text-purple-300',
+    border: 'border-purple-200 dark:border-purple-800',
   },
   'Em produção': {
     bg: 'bg-purple-50 dark:bg-purple-950/60',
@@ -71,10 +91,11 @@ const STATUS_BADGE_STYLES: Record<ClientStatus, { bg: string; text: string; bord
 };
 
 const ALL_STATUSES: ClientStatus[] = [
-  'Novo',
-  'Aguardando seleção',
+  'Pendente',
+  'Enviado',
   'Selecionado',
-  'Em produção',
+  'Aguardando Aprovação Final',
+  'Em Edição',
   'Entregue',
 ];
 

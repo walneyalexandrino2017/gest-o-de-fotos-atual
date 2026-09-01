@@ -223,7 +223,6 @@ app.get('/api/verify-session', (req, res) => {
     return res.json({ valid: true });
   }
 
-  // Se o token fornecido começar com adm_, considerar válido para persistência de sessão
   if (token && typeof token === 'string' && token.startsWith('adm_')) {
     return res.json({ valid: true });
   }
@@ -390,6 +389,49 @@ app.post('/api/public/selection/:token', async (req, res) => {
   });
 });
 
+// ----------------------------------------------------
+// PUBLIC APPROVAL ENDPOINTS (NEW)
+// ----------------------------------------------------
+app.get('/api/public/approval/:token', (req, res) => {
+  const { token } = req.params;
+  const client = memoryStore.clients.find((c) => c.token === token);
+  if (!client) {
+    return res.status(404).json({ error: 'Ensaio não encontrado para este link de aprovação final.' });
+  }
+
+  res.json({
+    client,
+    approvalPhotos: client.approvalPhotos || [],
+  });
+});
+
+app.post('/api/public/approval/:token', async (req, res) => {
+  const { token } = req.params;
+  const { approvalPhotos, feedback } = req.body;
+
+  const index = memoryStore.clients.findIndex((c) => c.token === token);
+  if (index === -1) {
+    return res.status(404).json({ error: 'Cliente não encontrado.' });
+  }
+
+  const client = memoryStore.clients[index];
+  const updatedClient = {
+    ...client,
+    approvalPhotos: Array.isArray(approvalPhotos) ? approvalPhotos : client.approvalPhotos,
+    approvalFeedback: typeof feedback === 'string' ? feedback.trim() : client.approvalFeedback,
+    status: 'Em Edição',
+    approvalSubmittedAt: new Date().toISOString(),
+  };
+
+  memoryStore.clients[index] = updatedClient;
+  await persistDb();
+
+  res.json({
+    success: true,
+    client: updatedClient,
+  });
+});
+
 // Public Delivery Token Endpoint
 app.get('/api/public/delivery/:token', (req, res) => {
   const { token } = req.params;
@@ -440,7 +482,6 @@ app.post('/api/public/submit-modelos-lead', async (req, res) => {
     return res.status(400).json({ error: 'Ao menos uma foto modelo deve ser selecionada.' });
   }
 
-  // Determine category if available from first photo
   const firstPhoto = memoryStore.modelPhotos.find((p) => validPhotoIds.includes(p.id));
   const categoryId = firstPhoto?.categoryId || memoryStore.categories[0]?.id || 'cat-outro';
 

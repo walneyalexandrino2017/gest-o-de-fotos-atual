@@ -1,27 +1,19 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Users,
-  Clock,
   CheckCircle2,
-  Image as ImageIcon,
-  Send,
-  UserPlus,
-  FolderPlus,
-  Upload,
+  PackageCheck,
+  Clock,
   ArrowRight,
-  Share2,
+  TrendingUp,
+  Camera,
+  FolderKanban,
   ExternalLink,
-  Copy,
-  MessageCircle,
-  Tag,
+  ShieldCheck,
   Sparkles,
-  Layers,
 } from 'lucide-react';
 import { Client, Category, ModelPhoto } from '../../types';
 import { NavView } from '../Sidebar';
-import { useToast } from '../Toast';
-import { PackageManagementModal } from '../modals/PackageManagementModal';
-import { getAgencyPackages } from '../../utils/storage';
 
 interface DashboardViewProps {
   clients: Client[];
@@ -36,466 +28,354 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   modelPhotos,
   onNavigate,
 }) => {
-  const { showToast } = useToast();
-  const [selectedClientForLink, setSelectedClientForLink] = useState<Client | null>(null);
-  const [isPackageModalOpen, setIsPackageModalOpen] = useState(false);
-  const currentPackages = getAgencyPackages();
-
-  // Metrics
+  // Metric counts
   const totalClients = clients.length;
-  const inProgressClients = clients.filter(
-    (c) => c.status === 'Novo' || c.status === 'Aguardando seleção' || c.status === 'Selecionado' || c.status === 'Em produção'
+  const pendingSelection = clients.filter(
+    (c) => c.status === 'Pendente' || c.status === 'Enviado'
   ).length;
-  const finishedClients = clients.filter((c) => c.status === 'Entregue').length;
-  const totalModelPhotos = modelPhotos.length;
-  const awaitingSelectionClients = clients.filter((c) => c.status === 'Aguardando seleção');
-  const awaitingSelectionCount = awaitingSelectionClients.length;
+  const chosenCount = clients.filter((c) => c.status === 'Selecionado').length;
+  const waitingApprovalCount = clients.filter(
+    (c) => c.status === 'Aguardando Aprovação Final' || c.status === 'Em Edição'
+  ).length;
+  const deliveredCount = clients.filter((c) => c.status === 'Entregue').length;
 
-  const handleCopyLink = (token: string, clientName: string) => {
-    const url = `${window.location.origin}${window.location.pathname}#/selecao/${token}`;
-    navigator.clipboard.writeText(url);
-    showToast(`Link de seleção de ${clientName} copiado!`, 'success');
-  };
+  const stats = [
+    {
+      title: 'Total de Clientes',
+      value: totalClients,
+      subtext: 'Cadastros no estúdio',
+      icon: Users,
+      color: 'from-blue-500 to-indigo-600',
+      bgColor: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900/60 text-blue-700 dark:text-blue-300',
+      viewTarget: 'clients' as NavView,
+    },
+    {
+      title: 'Aguardando Escolha',
+      value: pendingSelection,
+      subtext: 'Link de seleção enviado',
+      icon: Clock,
+      color: 'from-amber-500 to-amber-600',
+      bgColor: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/60 text-amber-700 dark:text-amber-300',
+      viewTarget: 'clients' as NavView,
+    },
+    {
+      title: 'Fotos Escolhidas',
+      value: chosenCount,
+      subtext: 'Prontos para o ensaio/edição',
+      icon: CheckCircle2,
+      color: 'from-emerald-500 to-teal-600',
+      bgColor: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300',
+      viewTarget: 'chosen_photos' as NavView,
+    },
+    {
+      title: 'Aprovação de Prévia',
+      value: waitingApprovalCount,
+      subtext: 'Fotos c/ marca d\'água',
+      icon: ShieldCheck,
+      color: 'from-purple-500 to-purple-600',
+      bgColor: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-900/60 text-purple-700 dark:text-purple-300',
+      viewTarget: 'approval_photos' as NavView,
+    },
+    {
+      title: 'Ensaios Entregues',
+      value: deliveredCount,
+      subtext: 'Pacote .ZIP concluído',
+      icon: PackageCheck,
+      color: 'from-amber-600 to-amber-700',
+      bgColor: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-300',
+      viewTarget: 'final_delivery' as NavView,
+    },
+  ];
 
-  const handleWhatsAppShare = (client: Client) => {
-    const url = `${window.location.origin}${window.location.pathname}#/selecao/${client.token}`;
-    const message = encodeURIComponent(
-      `Olá ${client.name}! Tudo bem?\nAqui está o seu link exclusivo para escolher suas fotos favoritas do ${client.contractedSession}:\n\n${url}\n\nÉ só clicar, marcar suas escolhas e confirmar!`
-    );
-    const cleanPhone = client.whatsapp.replace(/\D/g, '');
-    const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${message}` : `https://wa.me/?text=${message}`;
-    window.open(waUrl, '_blank');
-  };
+  const recentClients = [...clients].slice(0, 5);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-fadeIn">
       {/* Welcome Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-200 dark:border-amber-900/40 rounded-2xl">
-        <div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
-            Painel Geral de Ensaios Fotográficos
+      <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-amber-500/15 via-amber-600/5 to-transparent border border-amber-500/20 shadow-sm relative overflow-hidden">
+        <div className="max-w-3xl">
+          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">
+            <Sparkles className="w-4 h-4" />
+            Painel Geral do Estúdio
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight mb-2">
+            Controle Completo do Fluxo de Ensaios
           </h1>
-          <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 mt-0.5">
-            Acompanhe o funil de seleção, geração de prompts e entrega final aos clientes.
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+            Acompanhe desde a escolha das poses modelos com inteligência artificial até a prévia com marca d'água e a entrega final dos arquivos em alta resolução.
           </p>
-        </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setIsPackageModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-200 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl transition-all shadow-2xs cursor-pointer"
-            title="Editar nomes, valores e pacotes de fotos exibidos ao cliente"
-          >
-            <Tag className="w-4 h-4 text-amber-500" />
-            <span>Editar Pacotes & Valores</span>
-          </button>
-
-          <button
-            onClick={() => onNavigate('clients', 'new_client')}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-all shadow-xs cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Novo Cliente</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 1. Métricas Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-        {/* Metric 1: Total de Clientes */}
-        <div className="p-3.5 sm:p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xs">
-          <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1.5 sm:mb-2">
-            <span className="text-xs font-medium truncate">Total Clientes</span>
-            <Users className="w-4 h-4 text-zinc-400 shrink-0" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-            {totalClients}
-          </div>
-          <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-            Cadastrados
-          </p>
-        </div>
-
-        {/* Metric 2: Ensaios em Andamento */}
-        <div className="p-3.5 sm:p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xs">
-          <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1.5 sm:mb-2">
-            <span className="text-xs font-medium truncate">Em Andamento</span>
-            <Clock className="w-4 h-4 text-amber-500 shrink-0" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400">
-            {inProgressClients}
-          </div>
-          <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-            Em produção / novo
-          </p>
-        </div>
-
-        {/* Metric 3: Ensaios Finalizados */}
-        <div className="p-3.5 sm:p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xs">
-          <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1.5 sm:mb-2">
-            <span className="text-xs font-medium truncate">Finalizados</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-            {finishedClients}
-          </div>
-          <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-            Entregues (.ZIP)
-          </p>
-        </div>
-
-        {/* Metric 4: Fotos na Galeria */}
-        <div className="p-3.5 sm:p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xs">
-          <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1.5 sm:mb-2">
-            <span className="text-xs font-medium truncate">Fotos Galeria</span>
-            <ImageIcon className="w-4 h-4 text-sky-500 shrink-0" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold text-sky-600 dark:text-sky-400">
-            {totalModelPhotos}
-          </div>
-          <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-            Modelos & prompts
-          </p>
-        </div>
-
-        {/* Metric 5: Links Aguardando Resposta */}
-        <div className="col-span-2 sm:col-span-1 p-3.5 sm:p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xs">
-          <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1.5 sm:mb-2">
-            <span className="text-xs font-medium truncate">Aguardando Seleção</span>
-            <Send className="w-4 h-4 text-purple-500 shrink-0" />
-          </div>
-          <div className="text-xl sm:text-2xl font-bold text-purple-600 dark:text-purple-400">
-            {awaitingSelectionCount}
-          </div>
-          <p className="text-[10px] sm:text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-            Links ativos enviados
-          </p>
-        </div>
-      </div>
-
-      {/* Ações Rápidas */}
-      <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
-          Ações Rápidas
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <button
-            onClick={() => onNavigate('clients', 'new_client')}
-            className="flex flex-col items-center justify-center p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-amber-400 dark:hover:border-amber-600 bg-zinc-50/70 dark:bg-zinc-800/40 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 text-center transition-all group"
-          >
-            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-              <UserPlus className="w-5 h-5" />
-            </div>
-            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-              Novo Cliente
-            </span>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              Cadastrar e montar ensaio
-            </span>
-          </button>
-
-          <button
-            onClick={() => onNavigate('categories', 'new_category')}
-            className="flex flex-col items-center justify-center p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-amber-400 dark:hover:border-amber-600 bg-zinc-50/70 dark:bg-zinc-800/40 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 text-center transition-all group"
-          >
-            <div className="w-10 h-10 rounded-full bg-sky-100 dark:bg-sky-950/70 text-sky-700 dark:text-sky-300 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-              <FolderPlus className="w-5 h-5" />
-            </div>
-            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-              Nova Categoria
-            </span>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              Criar estilo de ensaio
-            </span>
-          </button>
-
-          <button
-            onClick={() => onNavigate('upload_models')}
-            className="flex flex-col items-center justify-center p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-amber-400 dark:hover:border-amber-600 bg-zinc-50/70 dark:bg-zinc-800/40 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 text-center transition-all group"
-          >
-            <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-              <Upload className="w-5 h-5" />
-            </div>
-            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-              Upload de Fotos
-            </span>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              Adicionar modelos & prompts
-            </span>
-          </button>
-
-          <button
-            onClick={() => {
-              if (awaitingSelectionClients.length > 0) {
-                setSelectedClientForLink(awaitingSelectionClients[0]);
-              } else if (clients.length > 0) {
-                setSelectedClientForLink(clients[0]);
-              } else {
-                showToast('Cadastre um cliente primeiro para enviar link.', 'info');
-              }
-            }}
-            className="flex flex-col items-center justify-center p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-amber-400 dark:hover:border-amber-600 bg-zinc-50/70 dark:bg-zinc-800/40 hover:bg-amber-50/30 dark:hover:bg-amber-950/20 text-center transition-all group"
-          >
-            <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
-              <Share2 className="w-5 h-5" />
-            </div>
-            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-              Enviar Link ao Cliente
-            </span>
-            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              Compartilhar via WhatsApp
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Clientes Aguardando Resposta ou Selecionados Recentemente */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Box 1: Aguardando seleção */}
-        <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Links Aguardando Resposta ({awaitingSelectionCount})
-              </h3>
-            </div>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
-              onClick={() => onNavigate('clients')}
-              className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-medium"
+              onClick={() => onNavigate('clients', 'new_client')}
+              className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-md shadow-amber-600/20 transition-all flex items-center gap-2 cursor-pointer"
             >
-              Ver todos <ArrowRight className="w-3 h-3" />
+              <Users className="w-4 h-4" />
+              <span>Novo Cliente / Ensaio</span>
+            </button>
+
+            <button
+              onClick={() => onNavigate('categories', 'new_category')}
+              className="px-4 py-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 font-semibold text-xs hover:bg-zinc-50 dark:hover:bg-zinc-700/80 transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <FolderKanban className="w-4 h-4" />
+              <span>Nova Categoria</span>
             </button>
           </div>
-
-          {awaitingSelectionClients.length === 0 ? (
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 py-6 text-center">
-              Nenhum cliente com seleção pendente no momento.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {awaitingSelectionClients.slice(0, 4).map((client) => (
-                <div
-                  key={client.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/80 dark:border-zinc-800"
-                >
-                  <div className="min-w-0 pr-2">
-                    <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                      {client.name}
-                    </p>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
-                      {client.contractedSession} • {client.modelPhotoIds.length} fotos enviadas
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => handleCopyLink(client.token, client.name)}
-                      className="p-1.5 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
-                      title="Copiar Link Público"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleWhatsAppShare(client)}
-                      className="p-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/80 rounded-lg text-xs hover:bg-emerald-100 transition-colors"
-                      title="Enviar via WhatsApp"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Box 2: Seleções Feitas / Prontas para Produção */}
-        <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Seleções Feitas pelos Clientes
-              </h3>
-            </div>
-            <button
-              onClick={() => onNavigate('chosen_photos')}
-              className="text-xs text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-medium"
-            >
-              Ver fotos escolhidas <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-
-          {clients.filter((c) => c.status === 'Selecionado' || c.status === 'Em produção').length === 0 ? (
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 py-6 text-center">
-              Nenhuma nova seleção recebida recentemente.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {clients
-                .filter((c) => c.status === 'Selecionado' || c.status === 'Em produção')
-                .slice(0, 4)
-                .map((client) => (
-                  <div
-                    key={client.id}
-                    className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/80 dark:border-zinc-800"
-                  >
-                    <div className="min-w-0 pr-2">
-                      <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                        {client.name}
-                      </p>
-                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium truncate">
-                        ✓ {client.chosenPhotoIds.length} fotos marcadas para gerar
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => onNavigate('chosen_photos')}
-                      className="px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-100 transition-colors"
-                    >
-                      Copiar Prompts
-                    </button>
-                  </div>
-                ))}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* 4. Pacotes e Valores dos Ensaios (Visão Rápida) */}
-      <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <Tag className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Pacotes & Valores Configurados para Clientes
-              </h3>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                Exibidos no topo da página de seleção do cliente
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsPackageModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-850 rounded-xl transition-colors cursor-pointer w-fit"
-          >
-            <Tag className="w-3.5 h-3.5" />
-            <span>Editar Nomes e Valores</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {currentPackages.map((pkg) => (
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {stats.map((stat, i) => {
+          const Icon = stat.icon;
+          return (
             <div
-              key={pkg.id}
-              className={`p-4 rounded-xl border transition-all ${
-                pkg.isPopular
-                  ? 'bg-amber-500/5 border-amber-400/60 dark:border-amber-600/50 shadow-2xs'
-                  : 'bg-zinc-50 dark:bg-zinc-800/40 border-zinc-200 dark:border-zinc-800'
-              }`}
+              key={i}
+              onClick={() => onNavigate(stat.viewTarget)}
+              className="p-5 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs hover:shadow-md hover:border-amber-400/40 dark:hover:border-amber-600/40 transition-all cursor-pointer group flex flex-col justify-between"
             >
-              <div className="flex items-center justify-between gap-1 mb-1.5">
-                <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
-                  {pkg.name}
-                </span>
-                {pkg.badge && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">
-                    {pkg.badge}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-lg font-extrabold text-amber-600 dark:text-amber-400">
-                  {pkg.price}
-                </span>
+              <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                  ({pkg.photoCount} fotos)
+                  {stat.title}
                 </span>
+                <div className={`p-2 rounded-xl border ${stat.bgColor}`}>
+                  <Icon className="w-4 h-4" />
+                </div>
               </div>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 line-clamp-2 mt-1">
-                {pkg.description}
-              </p>
+
+              <div>
+                <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
+                  {stat.value}
+                </p>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+                  {stat.subtext}
+                </p>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-[11px] font-semibold text-amber-600 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform">
+                <span>Ver detalhes</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      {/* Package Management Modal */}
-      <PackageManagementModal
-        isOpen={isPackageModalOpen}
-        onClose={() => setIsPackageModalOpen(false)}
-      />
+      {/* Workflow Navigation Cards */}
+      <div className="space-y-4">
+        <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
+          Etapas do Fluxo de Trabalho
+        </h2>
 
-      {/* Quick Link Share Modal */}
-      {selectedClientForLink && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-                Enviar Link de Seleção
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1: Fotos Modelo & Categorias */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/60 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                <Camera className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                1. Acervo & Fotos Modelo (IA)
               </h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Organize as categorias de ensaios e crie prompts fotográficos realistas com o Gemini AI para alimentar as opções de poses.
+              </p>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+              <span className="text-xs text-zinc-400 font-medium">
+                {categories.length} categorias • {modelPhotos.length} fotos
+              </span>
               <button
-                onClick={() => setSelectedClientForLink(null)}
-                className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1"
+                onClick={() => onNavigate('upload_models')}
+                className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
               >
-                Fechar
+                <span>Acessar Acervo</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
+          </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                Cliente selecionado:
-              </label>
-              <select
-                value={selectedClientForLink.id}
-                onChange={(e) => {
-                  const c = clients.find((cli) => cli.id === e.target.value);
-                  if (c) setSelectedClientForLink(c);
-                }}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100"
-              >
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.contractedSession})
-                  </option>
-                ))}
-              </select>
+          {/* Card 2: Prévia e Aprovação Final */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="w-10 h-10 rounded-2xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-900/60 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                2. Prévia & Aprovação (Marca d'Água)
+              </h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Envie as fotos tratadas com marca d'água para o cliente avaliar, aprovar quais fotos deseja e solicitar retoques pontuais.
+              </p>
             </div>
 
-            <div className="p-3 bg-zinc-100 dark:bg-zinc-800/80 rounded-xl space-y-2">
-              <span className="text-[11px] text-zinc-500 dark:text-zinc-400 block font-mono break-all">
-                {`${window.location.origin}${window.location.pathname}#/selecao/${selectedClientForLink.token}`}
+            <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+              <span className="text-xs text-zinc-400 font-medium">
+                {waitingApprovalCount} ensaio(s) em aprovação
               </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    handleCopyLink(selectedClientForLink.token, selectedClientForLink.name);
-                    setSelectedClientForLink(null);
-                  }}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg hover:bg-zinc-50"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  Copiar Link
-                </button>
-                <button
-                  onClick={() => {
-                    handleWhatsAppShare(selectedClientForLink);
-                    setSelectedClientForLink(null);
-                  }}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  Abrir WhatsApp
-                </button>
+              <button
+                onClick={() => onNavigate('approval_photos')}
+                className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>Ver Prévias</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Card 3: Entrega Final */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                <PackageCheck className="w-5 h-5" />
               </div>
+              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                3. Entrega em Pacote .ZIP
+              </h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                Envie as fotos em alta resolução finalizadas. O cliente pode baixar individualmente ou em um arquivo .ZIP completo.
+              </p>
+            </div>
+
+            <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+              <span className="text-xs text-zinc-400 font-medium">
+                {deliveredCount} ensaios entregues
+              </span>
+              <button
+                onClick={() => onNavigate('final_delivery')}
+                className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span>Ir para Entrega</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Recent Clients Table */}
+      <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+              Clientes Recentes
+            </h2>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              Últimos ensaios cadastrados e seu andamento no fluxo
+            </p>
+          </div>
+
+          <button
+            onClick={() => onNavigate('clients')}
+            className="text-xs font-semibold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            <span>Ver Todos ({clients.length})</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {recentClients.length === 0 ? (
+          <div className="text-center py-12 bg-zinc-50 dark:bg-zinc-800/40 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+            <Users className="w-10 h-10 text-zinc-400 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+              Nenhum cliente cadastrado ainda
+            </p>
+            <button
+              onClick={() => onNavigate('clients', 'new_client')}
+              className="mt-3 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold cursor-pointer"
+            >
+              Cadastrar Primeiro Cliente
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-zinc-200 dark:border-zinc-800 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                  <th className="pb-3">Cliente</th>
+                  <th className="pb-3">Ensaio / Pacote</th>
+                  <th className="pb-3">Fotos Escolhidas</th>
+                  <th className="pb-3">Status</th>
+                  <th className="pb-3 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 text-xs">
+                {recentClients.map((client) => {
+                  const hasSelection = client.chosenPhotoIds.length > 0;
+                  const hasApproval = client.approvalPhotos && client.approvalPhotos.length > 0;
+
+                  return (
+                    <tr key={client.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+                      <td className="py-3.5">
+                        <div className="font-semibold text-zinc-900 dark:text-zinc-100">
+                          {client.name}
+                        </div>
+                        <div className="text-[11px] text-zinc-400">
+                          {client.whatsapp}
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 text-zinc-600 dark:text-zinc-400">
+                        {client.contractedSession || 'Ensaio'}
+                      </td>
+
+                      <td className="py-3.5">
+                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                          {client.chosenPhotoIds.length}
+                        </span>
+                        <span className="text-zinc-400"> / {client.modelPhotoIds.length}</span>
+                      </td>
+
+                      <td className="py-3.5">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                            client.status === 'Entregue'
+                              ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                              : client.status === 'Aguardando Aprovação Final' || client.status === 'Em Edição'
+                              ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                              : client.status === 'Selecionado'
+                              ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          {client.status}
+                        </span>
+                      </td>
+
+                      <td className="py-3.5 text-right">
+                        {client.status === 'Aguardando Aprovação Final' || client.status === 'Em Edição' ? (
+                          <button
+                            onClick={() => onNavigate('approval_photos')}
+                            className="px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-xs font-semibold hover:bg-purple-100 transition-colors cursor-pointer"
+                          >
+                            Ver Aprovação
+                          </button>
+                        ) : hasSelection ? (
+                          <button
+                            onClick={() => onNavigate('chosen_photos')}
+                            className="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 text-xs font-semibold hover:bg-amber-100 transition-colors cursor-pointer"
+                          >
+                            Ver Escolhas
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onNavigate('clients')}
+                            className="px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium hover:bg-zinc-200 transition-colors cursor-pointer"
+                          >
+                            Gerenciar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

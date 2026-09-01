@@ -9,9 +9,11 @@ import { CategoriesGalleryView } from './components/views/CategoriesGalleryView'
 import { ClientsView } from './components/views/ClientsView';
 import { UploadModelPhotosView } from './components/views/UploadModelPhotosView';
 import { ChosenPhotosView } from './components/views/ChosenPhotosView';
+import { ApprovalPhotosView } from './components/views/ApprovalPhotosView';
 import { FinalDeliveryView } from './components/views/FinalDeliveryView';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PublicSelectionPage } from './components/public/PublicSelectionPage';
+import { PublicApprovalPage } from './components/public/PublicApprovalPage';
 import { PublicDeliveryPage } from './components/public/PublicDeliveryPage';
 import { PublicModelosPage } from './components/public/PublicModelosPage';
 import { LoginPage } from './components/LoginPage';
@@ -21,7 +23,7 @@ import { Category, ModelPhoto, Client } from './types';
 export default function App() {
   // Navigation & Route states
   const [route, setRoute] = useState<{
-    type: 'admin' | 'public_selection' | 'public_delivery' | 'public_modelos';
+    type: 'admin' | 'public_selection' | 'public_approval' | 'public_delivery' | 'public_modelos';
     token?: string;
   }>({
     type: 'admin',
@@ -64,6 +66,11 @@ export default function App() {
       setRoute({ type: 'public_selection', token });
       return;
     }
+    if (hash.startsWith('#/aprovacao-final/') || hash.startsWith('#/aprovacao/')) {
+      const token = hash.replace(/#\/(aprovacao-final|aprovacao)\//, '').split('?')[0];
+      setRoute({ type: 'public_approval', token });
+      return;
+    }
     if (hash.startsWith('#/entrega/')) {
       const token = hash.replace('#/entrega/', '').split('?')[0];
       setRoute({ type: 'public_delivery', token });
@@ -81,6 +88,10 @@ export default function App() {
     // 2. Query param based routes fallback
     if (urlParams.get('selecao')) {
       setRoute({ type: 'public_selection', token: urlParams.get('selecao') || '' });
+      return;
+    }
+    if (urlParams.get('aprovacao')) {
+      setRoute({ type: 'public_approval', token: urlParams.get('aprovacao') || '' });
       return;
     }
     if (urlParams.get('entrega')) {
@@ -204,6 +215,11 @@ export default function App() {
     return <PublicSelectionPage token={route.token} />;
   }
 
+  // If Public Approval Page (NEW)
+  if (route.type === 'public_approval' && route.token) {
+    return <PublicApprovalPage token={route.token} />;
+  }
+
   // If Public Final Delivery Page
   if (route.type === 'public_delivery' && route.token) {
     return <PublicDeliveryPage token={route.token} />;
@@ -227,7 +243,7 @@ export default function App() {
     if (!isAuthenticated) {
       return (
         <LoginPage
-          onLoginSuccess={(token) => {
+          onLoginSuccess={() => {
             setIsAuthenticated(true);
             syncDataFromServer().then(() => loadData());
           }}
@@ -243,6 +259,7 @@ export default function App() {
     clients: 'Cadastro de Clientes e Links de Seleção',
     upload_models: 'Upload de Imagens Modelo & Prompts de IA',
     chosen_photos: 'Fotos Escolhidas pelos Clientes',
+    approval_photos: 'Fotos para Aprovação Final (Marca d\'Água)',
     final_delivery: 'Upload Final & Entrega em Pacote .ZIP',
   };
 
@@ -315,6 +332,13 @@ export default function App() {
               <ChosenPhotosView
                 clients={clients}
                 modelPhotos={modelPhotos}
+                onNavigate={handleNavigate}
+              />
+            )}
+
+            {currentView === 'approval_photos' && (
+              <ApprovalPhotosView
+                clients={clients}
                 onNavigate={handleNavigate}
               />
             )}
