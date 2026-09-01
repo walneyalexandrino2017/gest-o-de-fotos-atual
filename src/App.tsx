@@ -9,21 +9,18 @@ import { CategoriesGalleryView } from './components/views/CategoriesGalleryView'
 import { ClientsView } from './components/views/ClientsView';
 import { UploadModelPhotosView } from './components/views/UploadModelPhotosView';
 import { ChosenPhotosView } from './components/views/ChosenPhotosView';
-import { ApprovalPhotosView } from './components/views/ApprovalPhotosView';
 import { FinalDeliveryView } from './components/views/FinalDeliveryView';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { PublicSelectionPage } from './components/public/PublicSelectionPage';
-import { PublicApprovalPage } from './components/public/PublicApprovalPage';
 import { PublicDeliveryPage } from './components/public/PublicDeliveryPage';
 import { PublicModelosPage } from './components/public/PublicModelosPage';
-import { LoginPage } from './components/LoginPage';
 import { getCategories, getModelPhotos, getClients, syncDataFromServer } from './utils/storage';
 import { Category, ModelPhoto, Client } from './types';
 
 export default function App() {
   // Navigation & Route states
   const [route, setRoute] = useState<{
-    type: 'admin' | 'public_selection' | 'public_approval' | 'public_delivery' | 'public_modelos';
+    type: 'admin' | 'public_selection' | 'public_delivery' | 'public_modelos';
     token?: string;
   }>({
     type: 'admin',
@@ -35,12 +32,6 @@ export default function App() {
   const [openCreateCategoryModal, setOpenCreateCategoryModal] = useState(false);
   const [isApiSettingsModalOpen, setIsApiSettingsModalOpen] = useState(false);
   const [isPackageManagementModalOpen, setIsPackageManagementModalOpen] = useState(false);
-
-  // Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return Boolean(localStorage.getItem('admin_token'));
-  });
-  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
 
   // App Data
   const [categories, setCategories] = useState<Category[]>([]);
@@ -60,15 +51,10 @@ export default function App() {
     const search = window.location.search;
     const urlParams = new URLSearchParams(search);
 
-    // 1. Hash-based routes (Best for Netlify / Vercel SPA without server rewrites)
+    // 1. Hash-based routes (Best for Netlify SPA without server rewrites)
     if (hash.startsWith('#/selecao/')) {
       const token = hash.replace('#/selecao/', '').split('?')[0];
       setRoute({ type: 'public_selection', token });
-      return;
-    }
-    if (hash.startsWith('#/aprovacao-final/') || hash.startsWith('#/aprovacao/')) {
-      const token = hash.replace(/#\/(aprovacao-final|aprovacao)\//, '').split('?')[0];
-      setRoute({ type: 'public_approval', token });
       return;
     }
     if (hash.startsWith('#/entrega/')) {
@@ -90,10 +76,6 @@ export default function App() {
       setRoute({ type: 'public_selection', token: urlParams.get('selecao') || '' });
       return;
     }
-    if (urlParams.get('aprovacao')) {
-      setRoute({ type: 'public_approval', token: urlParams.get('aprovacao') || '' });
-      return;
-    }
     if (urlParams.get('entrega')) {
       setRoute({ type: 'public_delivery', token: urlParams.get('entrega') || '' });
       return;
@@ -105,50 +87,6 @@ export default function App() {
 
     // Default: Admin panel
     setRoute({ type: 'admin' });
-  };
-
-  // Verify auth session token with backend
-  useEffect(() => {
-    const verifyAuth = async () => {
-      const savedToken = localStorage.getItem('admin_token');
-      if (!savedToken) {
-        setIsAuthenticated(false);
-        setIsCheckingAuth(false);
-        return;
-      }
-
-      try {
-        const res = await fetch(`/api/verify-session?token=${encodeURIComponent(savedToken)}`, {
-          headers: {
-            Authorization: `Bearer ${savedToken}`,
-          },
-        });
-        const data = await res.json();
-        if (res.ok && data.valid) {
-          setIsAuthenticated(true);
-        } else {
-          localStorage.removeItem('admin_token');
-          setIsAuthenticated(false);
-        }
-      } catch {
-        // Fallback to local token presence if offline or local
-        setIsAuthenticated(Boolean(savedToken));
-      } finally {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    verifyAuth();
-  }, []);
-
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/logout', { method: 'POST' });
-    } catch {
-      // ignore
-    }
-    localStorage.removeItem('admin_token');
-    setIsAuthenticated(false);
   };
 
   useEffect(() => {
@@ -215,11 +153,6 @@ export default function App() {
     return <PublicSelectionPage token={route.token} />;
   }
 
-  // If Public Approval Page (NEW)
-  if (route.type === 'public_approval' && route.token) {
-    return <PublicApprovalPage token={route.token} />;
-  }
-
   // If Public Final Delivery Page
   if (route.type === 'public_delivery' && route.token) {
     return <PublicDeliveryPage token={route.token} />;
@@ -230,28 +163,6 @@ export default function App() {
     return <PublicModelosPage />;
   }
 
-  // If Admin route and not authenticated, show Login page
-  if (route.type === 'admin') {
-    if (isCheckingAuth) {
-      return (
-        <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      );
-    }
-
-    if (!isAuthenticated) {
-      return (
-        <LoginPage
-          onLoginSuccess={() => {
-            setIsAuthenticated(true);
-            syncDataFromServer().then(() => loadData());
-          }}
-        />
-      );
-    }
-  }
-
   // Titles for current active view
   const VIEW_TITLES: Record<NavView, string> = {
     dashboard: 'Visão Geral e Métricas do Estúdio',
@@ -259,7 +170,6 @@ export default function App() {
     clients: 'Cadastro de Clientes e Links de Seleção',
     upload_models: 'Upload de Imagens Modelo & Prompts de IA',
     chosen_photos: 'Fotos Escolhidas pelos Clientes',
-    approval_photos: 'Fotos para Aprovação Final (Marca d\'Água)',
     final_delivery: 'Upload Final & Entrega em Pacote .ZIP',
   };
 
@@ -288,7 +198,6 @@ export default function App() {
             onToggleSidebar={() => setIsSidebarOpenMobile(!isSidebarOpenMobile)}
             activeViewTitle={VIEW_TITLES[currentView]}
             onOpenApiSettings={() => setIsApiSettingsModalOpen(true)}
-            onLogout={handleLogout}
           />
 
           {/* Main View Container with mobile bottom bar clearance */}
@@ -332,13 +241,6 @@ export default function App() {
               <ChosenPhotosView
                 clients={clients}
                 modelPhotos={modelPhotos}
-                onNavigate={handleNavigate}
-              />
-            )}
-
-            {currentView === 'approval_photos' && (
-              <ApprovalPhotosView
-                clients={clients}
                 onNavigate={handleNavigate}
               />
             )}

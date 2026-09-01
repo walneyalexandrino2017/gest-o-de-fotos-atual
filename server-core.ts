@@ -40,7 +40,6 @@ interface ServerStore {
   clients: any[];
   apiSettings: any;
   packages?: any[];
-  adminSessionToken?: string | null;
 }
 
 let memoryStore: ServerStore = {
@@ -49,7 +48,6 @@ let memoryStore: ServerStore = {
   clients: [],
   apiSettings: { geminiApiKey: '', keyTier: 'Gratuito' },
   packages: [],
-  adminSessionToken: null,
 };
 
 // Initialize DB from disk or write initial
@@ -90,7 +88,6 @@ function initLocalDb() {
         clients: cleanClients,
         apiSettings: parsed.apiSettings || { geminiApiKey: '', keyTier: 'Gratuito' },
         packages: cleanPackages,
-        adminSessionToken: parsed.adminSessionToken || null,
       };
       persistLocalDb();
     } else {
@@ -100,7 +97,6 @@ function initLocalDb() {
         clients: [],
         apiSettings: { geminiApiKey: '', keyTier: 'Gratuito' },
         packages: [],
-        adminSessionToken: null,
       };
       persistLocalDb();
     }
@@ -146,7 +142,6 @@ async function syncFromStore() {
             clients: Array.isArray(parsedData.clients) ? parsedData.clients : [],
             apiSettings: parsedData.apiSettings || { geminiApiKey: '', keyTier: 'Gratuito' },
             packages: Array.isArray(parsedData.packages) ? parsedData.packages : [],
-            adminSessionToken: parsedData.adminSessionToken || null,
           };
           return;
         }
@@ -186,55 +181,6 @@ const getGeminiClient = (overrideApiKey?: string) => {
     },
   });
 };
-
-// ----------------------------------------------------
-// AUTHENTICATION ENDPOINTS
-// ----------------------------------------------------
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@foto.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123456';
-
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
-  }
-
-  if (email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() && password === ADMIN_PASSWORD) {
-    const token = `adm_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-    memoryStore.adminSessionToken = token;
-    await persistDb();
-
-    return res.json({
-      success: true,
-      token,
-      message: 'Login realizado com sucesso!',
-    });
-  }
-
-  return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
-});
-
-app.get('/api/verify-session', (req, res) => {
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.replace('Bearer ', '') || req.query.token;
-
-  if (token && memoryStore.adminSessionToken && token === memoryStore.adminSessionToken) {
-    return res.json({ valid: true });
-  }
-
-  if (token && typeof token === 'string' && token.startsWith('adm_')) {
-    return res.json({ valid: true });
-  }
-
-  return res.status(401).json({ valid: false, error: 'Sessão inválida ou expirada.' });
-});
-
-app.post('/api/logout', async (req, res) => {
-  memoryStore.adminSessionToken = null;
-  await persistDb();
-  return res.json({ success: true, message: 'Logout realizado com sucesso.' });
-});
 
 // ----------------------------------------------------
 // DATA SYNC & CRUD ENDPOINTS
@@ -389,49 +335,6 @@ app.post('/api/public/selection/:token', async (req, res) => {
   });
 });
 
-// ----------------------------------------------------
-// PUBLIC APPROVAL ENDPOINTS (NEW)
-// ----------------------------------------------------
-app.get('/api/public/approval/:token', (req, res) => {
-  const { token } = req.params;
-  const client = memoryStore.clients.find((c) => c.token === token);
-  if (!client) {
-    return res.status(404).json({ error: 'Ensaio não encontrado para este link de aprovação final.' });
-  }
-
-  res.json({
-    client,
-    approvalPhotos: client.approvalPhotos || [],
-  });
-});
-
-app.post('/api/public/approval/:token', async (req, res) => {
-  const { token } = req.params;
-  const { approvalPhotos, feedback } = req.body;
-
-  const index = memoryStore.clients.findIndex((c) => c.token === token);
-  if (index === -1) {
-    return res.status(404).json({ error: 'Cliente não encontrado.' });
-  }
-
-  const client = memoryStore.clients[index];
-  const updatedClient = {
-    ...client,
-    approvalPhotos: Array.isArray(approvalPhotos) ? approvalPhotos : client.approvalPhotos,
-    approvalFeedback: typeof feedback === 'string' ? feedback.trim() : client.approvalFeedback,
-    status: 'Em Edição',
-    approvalSubmittedAt: new Date().toISOString(),
-  };
-
-  memoryStore.clients[index] = updatedClient;
-  await persistDb();
-
-  res.json({
-    success: true,
-    client: updatedClient,
-  });
-});
-
 // Public Delivery Token Endpoint
 app.get('/api/public/delivery/:token', (req, res) => {
   const { token } = req.params;
@@ -482,6 +385,7 @@ app.post('/api/public/submit-modelos-lead', async (req, res) => {
     return res.status(400).json({ error: 'Ao menos uma foto modelo deve ser selecionada.' });
   }
 
+  // Determine category if available from first photo
   const firstPhoto = memoryStore.modelPhotos.find((p) => validPhotoIds.includes(p.id));
   const categoryId = firstPhoto?.categoryId || memoryStore.categories[0]?.id || 'cat-outro';
 

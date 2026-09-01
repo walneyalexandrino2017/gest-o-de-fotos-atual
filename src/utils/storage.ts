@@ -1,14 +1,16 @@
-import { Category, ModelPhoto, Client, ApiSettings, PackageOption, ApprovalPhoto } from '../types';
+import { Category, ModelPhoto, Client, ApiSettings, AgencyPackage } from '../types';
 
 const STORAGE_KEYS = {
-  CATEGORIES: 'studiophoto_categories_v2',
-  MODEL_PHOTOS: 'studiophoto_model_photos_v2',
-  CLIENTS: 'studiophoto_clients_v2',
-  API_SETTINGS: 'studiophoto_api_settings_v2',
-  PACKAGES: 'studiophoto_packages_v2',
+  CATEGORIES: 'photo_management_categories',
+  MODEL_PHOTOS: 'photo_management_model_photos',
+  CLIENTS: 'photo_management_clients',
+  API_SETTINGS: 'photo_management_api_settings',
+  PACKAGES: 'photo_management_packages',
 };
 
-// Initial Seed Data for local prototype
+export const INITIAL_PACKAGES: AgencyPackage[] = [];
+
+// Initial Seed Data - Advogado Ensaio 01
 const INITIAL_CATEGORIES: Category[] = [
   {
     id: 'cat-advogado-01',
@@ -19,498 +21,552 @@ const INITIAL_CATEGORIES: Category[] = [
   },
 ];
 
-const INITIAL_PACKAGES: PackageOption[] = [
-  {
-    id: 'pkg-1',
-    name: 'Essencial',
-    photoCount: 10,
-    price: 350,
-    description: 'Ideal para fotos rápidas de perfil profissional e redes sociais.',
-  },
-  {
-    id: 'pkg-2',
-    name: 'Profissional',
-    photoCount: 20,
-    price: 590,
-    description: 'O mais escolhido: fotos de alta resolução, diferentes enquadramentos e edição fina.',
-    featured: true,
-  },
-  {
-    id: 'pkg-3',
-    name: 'Premium Executivo',
-    photoCount: 35,
-    price: 890,
-    description: 'Cobertura completa, múltiplos looks, retratos corporativos e entrega prioritária.',
-  },
-  {
-    id: 'pkg-4',
-    name: 'Empresarial & Equipe',
-    photoCount: 50,
-    price: 1350,
-    description: 'Para escritórios com sócios, colaboradores e ambientação do espaço.',
-  },
+const INITIAL_MODEL_PHOTOS: ModelPhoto[] = [];
+const INITIAL_CLIENTS: Client[] = [];
+
+const INITIAL_API_SETTINGS: ApiSettings = {
+  geminiApiKey: '',
+  keyTier: 'Gratuito',
+};
+
+// In-memory runtime cache
+let memoryCategories: Category[] | null = null;
+let memoryModelPhotos: ModelPhoto[] | null = null;
+let memoryClients: Client[] | null = null;
+let memoryApiSettings: ApiSettings | null = null;
+let memoryPackages: AgencyPackage[] | null = null;
+
+// Legacy Mock IDs to purge permanently
+const LEGACY_MOCK_CLIENT_IDS = ['cli-adv-1', 'cli-1', 'cli-2', 'cli-3'];
+const LEGACY_MOCK_PHOTO_IDS = [
+  'photo-adv-1', 'photo-adv-2', 'photo-adv-3', 'photo-adv-4', 'photo-adv-5', 'photo-adv-6', 'photo-adv-7',
+  'photo-101', 'photo-102', 'photo-103', 'photo-104', 'photo-105', 'photo-106', 'photo-107', 'photo-108'
 ];
+const LEGACY_MOCK_PACKAGE_IDS = ['pkg-1', 'pkg-2', 'pkg-3', 'pkg-4'];
 
-// Helper to notify other parts of the app that storage updated
-export const triggerStorageUpdate = () => {
-  window.dispatchEvent(new Event('app_storage_updated'));
-};
-
-export const generateUniqueToken = (prefix = 'tok'): string => {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-};
-
-// Background sync with Node.js Express server to persist data across reloads
-export const syncDataWithServer = async (
-  categories: Category[],
-  modelPhotos: ModelPhoto[],
-  clients: Client[],
-  apiSettings: ApiSettings,
-  packages?: PackageOption[]
-) => {
+// Clean migration to purge all fake mock data from browser localStorage
+const MIGRATION_VERSION_KEY = 'photo_management_pure_user_data_v4';
+const runInitialDataCleanup = () => {
   try {
-    const currentPackages = packages || getPackages();
-    const res = await fetch('/api/sync', {
+    if (typeof window === 'undefined') return;
+    const migrated = localStorage.getItem(MIGRATION_VERSION_KEY);
+    if (!migrated) {
+      // Clean clients in localStorage
+      const rawClients = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+      if (rawClients) {
+        try {
+          const parsed = JSON.parse(rawClients);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter((c: Client) => !LEGACY_MOCK_CLIENT_IDS.includes(c.id));
+            localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clean));
+            memoryClients = clean;
+          }
+        } catch (_) {}
+      }
+
+      // Clean model photos in localStorage
+      const rawPhotos = localStorage.getItem(STORAGE_KEYS.MODEL_PHOTOS);
+      if (rawPhotos) {
+        try {
+          const parsed = JSON.parse(rawPhotos);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter((p: ModelPhoto) => !LEGACY_MOCK_PHOTO_IDS.includes(p.id));
+            localStorage.setItem(STORAGE_KEYS.MODEL_PHOTOS, JSON.stringify(clean));
+            memoryModelPhotos = clean;
+          }
+        } catch (_) {}
+      }
+
+      // Clean packages in localStorage (purge unedited legacy mock packages)
+      const rawPackages = localStorage.getItem(STORAGE_KEYS.PACKAGES);
+      if (rawPackages) {
+        try {
+          const parsed = JSON.parse(rawPackages);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter((p: AgencyPackage) => !LEGACY_MOCK_PACKAGE_IDS.includes(p.id));
+            localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(clean));
+            memoryPackages = clean;
+          }
+        } catch (_) {}
+      } else {
+        localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify([]));
+        memoryPackages = [];
+      }
+
+      localStorage.setItem(MIGRATION_VERSION_KEY, 'true');
+    }
+  } catch (e) {
+    console.warn('Migration cleanup error:', e);
+  }
+};
+runInitialDataCleanup();
+
+// Event Dispatcher for reactive multi-view/tab updates
+const notifyStorageUpdate = () => {
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('app_storage_updated'));
+    }
+  } catch (e) {
+    console.error('Failed to dispatch app_storage_updated event', e);
+  }
+};
+
+// Async background sync with the server
+const pushFullSyncToServer = async () => {
+  try {
+    const payload = {
+      categories: getCategories(),
+      modelPhotos: getModelPhotos(),
+      clients: getClients(),
+      apiSettings: getApiSettings(),
+      packages: getAgencyPackages(),
+    };
+
+    await fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ categories, modelPhotos, clients, apiSettings, packages: currentPackages }),
+      body: JSON.stringify(payload),
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.clients) && data.clients.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(data.clients));
-        triggerStorageUpdate();
-      }
-      if (Array.isArray(data.packages) && data.packages.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(data.packages));
-        triggerStorageUpdate();
-      }
-    }
   } catch (err) {
-    console.warn('Sync com servidor backend indisponível, usando localStorage local:', err);
+    // Network or offline fallback
+    console.warn('Sync to server warning:', err);
   }
 };
 
-// Initial sync on app boot
-export const syncDataFromServer = async () => {
+// Pull latest data from server when available and merge safely
+export const syncDataFromServer = async (): Promise<boolean> => {
   try {
     const res = await fetch('/api/data');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.categories) && data.categories.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(data.categories));
-      }
-      if (Array.isArray(data.modelPhotos)) {
-        localStorage.setItem(STORAGE_KEYS.MODEL_PHOTOS, JSON.stringify(data.modelPhotos));
-      }
-      if (Array.isArray(data.clients)) {
-        localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(data.clients));
-      }
-      if (data.apiSettings) {
-        localStorage.setItem(STORAGE_KEYS.API_SETTINGS, JSON.stringify(data.apiSettings));
-      }
-      if (Array.isArray(data.packages) && data.packages.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(data.packages));
-      }
-      triggerStorageUpdate();
+    if (!res.ok) return false;
+    const data = await res.json();
+    
+    // 1. Categories - directly sync from server if valid array
+    if (data.categories && Array.isArray(data.categories)) {
+      memoryCategories = data.categories;
+      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(data.categories));
     }
+
+    // 2. Model Photos - directly sync from server if valid array (filtering legacy mocks)
+    if (data.modelPhotos && Array.isArray(data.modelPhotos)) {
+      const cleanPhotos = data.modelPhotos.filter((p: ModelPhoto) => !LEGACY_MOCK_PHOTO_IDS.includes(p.id));
+      memoryModelPhotos = cleanPhotos;
+      localStorage.setItem(STORAGE_KEYS.MODEL_PHOTOS, JSON.stringify(cleanPhotos));
+    }
+
+    // 3. Clients - directly sync from server if valid array (filtering legacy mocks)
+    if (data.clients && Array.isArray(data.clients)) {
+      const cleanClients = data.clients.filter((c: Client) => !LEGACY_MOCK_CLIENT_IDS.includes(c.id));
+      memoryClients = cleanClients;
+      localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(cleanClients));
+    }
+
+    // 4. Packages (sync from server, filtering out unedited legacy mock packages)
+    if (data.packages && Array.isArray(data.packages)) {
+      const cleanPackages = data.packages.filter((p: AgencyPackage) => !LEGACY_MOCK_PACKAGE_IDS.includes(p.id));
+      memoryPackages = cleanPackages;
+      localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(cleanPackages));
+    }
+
+    if (data.apiSettings && !memoryApiSettings?.geminiApiKey) {
+      memoryApiSettings = data.apiSettings;
+      localStorage.setItem(STORAGE_KEYS.API_SETTINGS, JSON.stringify(data.apiSettings));
+    }
+
+    notifyStorageUpdate();
+    return true;
   } catch (err) {
-    console.warn('Falha ao baixar dados do servidor backend:', err);
+    console.warn('Could not sync data from server:', err);
+    return false;
   }
 };
 
-// ---------------- CATEGORIES ----------------
+export const getAgencyPackages = (): AgencyPackage[] => {
+  if (memoryPackages !== null) return memoryPackages;
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.PACKAGES);
+    if (!data) {
+      localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify([]));
+      memoryPackages = [];
+      return [];
+    }
+    const parsed: AgencyPackage[] = JSON.parse(data);
+    if (Array.isArray(parsed)) {
+      const clean = parsed.filter((p: AgencyPackage) => !LEGACY_MOCK_PACKAGE_IDS.includes(p.id));
+      memoryPackages = clean;
+      return clean;
+    }
+    memoryPackages = [];
+    return [];
+  } catch {
+    return memoryPackages || [];
+  }
+};
+
+export const saveAgencyPackages = (packages: AgencyPackage[]): void => {
+  memoryPackages = packages;
+  try {
+    localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(packages));
+  } catch (err) {
+    console.warn('Could not save packages to localStorage:', err);
+  }
+  notifyStorageUpdate();
+  pushFullSyncToServer();
+  try {
+    fetch('/api/packages', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packages }),
+    }).catch(() => {});
+  } catch (_) {}
+};
+
 export const getCategories = (): Category[] => {
+  if (memoryCategories) return memoryCategories;
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-    if (!raw) {
+    const data = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
+    if (!data) {
       localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(INITIAL_CATEGORIES));
+      memoryCategories = INITIAL_CATEGORIES;
       return INITIAL_CATEGORIES;
     }
-    const parsed = JSON.parse(raw);
-    const legacyCategoryIds = ['cat-1', 'cat-2', 'cat-3', 'cat-4', 'cat-advogado'];
-    const filtered = parsed.filter((c: Category) => !legacyCategoryIds.includes(c.id));
-    if (filtered.length === 0) {
-      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(INITIAL_CATEGORIES));
-      return INITIAL_CATEGORIES;
-    }
-    return filtered;
+    const parsed: Category[] = JSON.parse(data);
+    memoryCategories = parsed;
+    return parsed;
   } catch {
-    return INITIAL_CATEGORIES;
+    return memoryCategories || INITIAL_CATEGORIES;
   }
 };
 
-export const saveCategories = (categories: Category[]) => {
-  localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
-  triggerStorageUpdate();
-  syncDataWithServer(categories, getModelPhotos(), getClients(), getApiSettings(), getPackages());
+export const saveCategories = (categories: Category[]): void => {
+  memoryCategories = categories;
+  try {
+    localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
+  } catch (err) {
+    console.warn('Could not save categories to localStorage:', err);
+  }
+  notifyStorageUpdate();
+  pushFullSyncToServer();
 };
 
-export const addCategory = (category: Omit<Category, 'id' | 'createdAt'>): Category => {
-  const categories = getCategories();
-  const newCat: Category = {
-    ...category,
-    id: `cat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    createdAt: new Date().toISOString(),
-  };
-  const updated = [newCat, ...categories];
-  saveCategories(updated);
-  return newCat;
-};
-
-export const deleteCategory = (id: string) => {
-  const categories = getCategories().filter((c) => c.id !== id);
-  saveCategories(categories);
-  const photos = getModelPhotos().filter((p) => p.categoryId !== id);
-  saveModelPhotos(photos);
-};
-
-// ---------------- MODEL PHOTOS ----------------
 export const getModelPhotos = (): ModelPhoto[] => {
+  if (memoryModelPhotos) return memoryModelPhotos;
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.MODEL_PHOTOS);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    const legacyCategoryIds = ['cat-1', 'cat-2', 'cat-3', 'cat-4', 'cat-advogado'];
-    return parsed.filter((p: ModelPhoto) => !legacyCategoryIds.includes(p.categoryId));
-  } catch {
-    return [];
-  }
-};
-
-export const saveModelPhotos = (photos: ModelPhoto[]) => {
-  localStorage.setItem(STORAGE_KEYS.MODEL_PHOTOS, JSON.stringify(photos));
-  triggerStorageUpdate();
-  syncDataWithServer(getCategories(), photos, getClients(), getApiSettings(), getPackages());
-};
-
-export const addModelPhoto = (photo: Omit<ModelPhoto, 'id' | 'createdAt'>): ModelPhoto => {
-  const photos = getModelPhotos();
-  const newPhoto: ModelPhoto = {
-    ...photo,
-    id: `photo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    createdAt: new Date().toISOString(),
-  };
-  const updated = [newPhoto, ...photos];
-  saveModelPhotos(updated);
-  return newPhoto;
-};
-
-export const deleteModelPhoto = (id: string) => {
-  const photos = getModelPhotos().filter((p) => p.id !== id);
-  saveModelPhotos(photos);
-};
-
-// ---------------- CLIENTS ----------------
-export const getClients = (): Client[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.CLIENTS);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    const legacyClientIds = ['cli-adv-1', 'cli-1', 'cli-2', 'cli-3'];
-    return parsed.filter((c: Client) => !legacyClientIds.includes(c.id));
-  } catch {
-    return [];
-  }
-};
-
-export const saveClients = (clients: Client[]) => {
-  localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clients));
-  triggerStorageUpdate();
-  syncDataWithServer(getCategories(), getModelPhotos(), clients, getApiSettings(), getPackages());
-};
-
-export const addClient = (client: Omit<Client, 'id' | 'createdAt' | 'token'>): Client => {
-  const clients = getClients();
-  const token = `tok-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const newClient: Client = {
-    ...client,
-    id: `cli-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    token,
-    createdAt: new Date().toISOString(),
-  };
-  const updated = [newClient, ...clients];
-  saveClients(updated);
-  return newClient;
-};
-
-export const updateClient = (id: string, partial: Partial<Client>) => {
-  const clients = getClients().map((c) => (c.id === id ? { ...c, ...partial } : c));
-  saveClients(clients);
-};
-
-export const deleteClient = (id: string) => {
-  const clients = getClients().filter((c) => c.id !== id);
-  saveClients(clients);
-};
-
-// ---------------- PACKAGES ----------------
-export const getPackages = (): PackageOption[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.PACKAGES);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(INITIAL_PACKAGES));
-      return INITIAL_PACKAGES;
+    const data = localStorage.getItem(STORAGE_KEYS.MODEL_PHOTOS);
+    if (!data) {
+      localStorage.setItem(STORAGE_KEYS.MODEL_PHOTOS, JSON.stringify(INITIAL_MODEL_PHOTOS));
+      memoryModelPhotos = INITIAL_MODEL_PHOTOS;
+      return INITIAL_MODEL_PHOTOS;
     }
-    return JSON.parse(raw);
+    const parsed: ModelPhoto[] = JSON.parse(data);
+    memoryModelPhotos = parsed;
+    return parsed;
   } catch {
-    return INITIAL_PACKAGES;
+    return memoryModelPhotos || INITIAL_MODEL_PHOTOS;
   }
 };
 
-export const savePackages = (packages: PackageOption[]) => {
-  localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(packages));
-  triggerStorageUpdate();
-  syncDataWithServer(getCategories(), getModelPhotos(), getClients(), getApiSettings(), packages);
-};
-
-export const getAgencyPackages = (): any[] => {
-  return getPackages();
-};
-
-export const saveAgencyPackages = (packages: any[]) => {
-  savePackages(packages);
-};
-
-// ---------------- API SETTINGS ----------------
-export const getApiSettings = (): ApiSettings => {
+export const saveModelPhotos = (photos: ModelPhoto[]): void => {
+  memoryModelPhotos = photos;
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.API_SETTINGS);
-    if (!raw) return { geminiApiKey: '', keyTier: 'Gratuito' };
-    return JSON.parse(raw);
+    localStorage.setItem(STORAGE_KEYS.MODEL_PHOTOS, JSON.stringify(photos));
+  } catch (err) {
+    console.warn('Could not save model photos to localStorage:', err);
+  }
+  notifyStorageUpdate();
+  pushFullSyncToServer();
+};
+
+export const deleteModelPhoto = (id: string): void => {
+  const current = getModelPhotos();
+  const updated = current.filter((p) => p.id !== id);
+  saveModelPhotos(updated);
+  try {
+    fetch(`/api/model-photos/${id}`, { method: 'DELETE' }).catch(() => {});
+  } catch (_) {}
+};
+
+export const getClients = (): Client[] => {
+  if (memoryClients) return memoryClients;
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+    if (!data) {
+      localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(INITIAL_CLIENTS));
+      memoryClients = INITIAL_CLIENTS;
+      return INITIAL_CLIENTS;
+    }
+    const parsed: Client[] = JSON.parse(data);
+    memoryClients = parsed;
+    return parsed;
   } catch {
-    return { geminiApiKey: '', keyTier: 'Gratuito' };
+    return memoryClients || INITIAL_CLIENTS;
   }
 };
 
-export const saveApiSettings = (settings: ApiSettings) => {
-  localStorage.setItem(STORAGE_KEYS.API_SETTINGS, JSON.stringify(settings));
-  triggerStorageUpdate();
-  syncDataWithServer(getCategories(), getModelPhotos(), getClients(), settings, getPackages());
+export const saveClients = (clients: Client[]): void => {
+  memoryClients = clients;
+  try {
+    localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clients));
+  } catch (err) {
+    console.warn('Could not save clients to localStorage:', err);
+  }
+  notifyStorageUpdate();
+  pushFullSyncToServer();
 };
 
-// ---------------- PUBLIC SELECTION API FETCHERS ----------------
-export const fetchPublicSelectionData = async (token: string): Promise<{
-  client: Client;
-  modelPhotos: ModelPhoto[];
-  packages?: PackageOption[];
-} | null> => {
+export const deleteClient = (id: string): void => {
+  const current = getClients();
+  const updated = current.filter((c) => c.id !== id);
+  saveClients(updated);
   try {
+    fetch(`/api/clients/${id}`, { method: 'DELETE' }).catch(() => {});
+  } catch (_) {}
+};
+
+export const getClientByToken = (token: string): Client | undefined => {
+  const clients = getClients();
+  return clients.find((c) => c.token === token);
+};
+
+export const updateClientByToken = (token: string, updater: (client: Client) => Client): Client | undefined => {
+  const clients = getClients();
+  const index = clients.findIndex((c) => c.token === token);
+  if (index === -1) return undefined;
+  
+  const updatedClient = updater(clients[index]);
+  clients[index] = updatedClient;
+  saveClients(clients);
+  return updatedClient;
+};
+
+// Asynchronous public fetchers that query the backend server directly
+export const fetchPublicSelectionData = async (
+  token: string
+): Promise<{ client: Client; modelPhotos: ModelPhoto[]; packages?: AgencyPackage[] } | null> => {
+  try {
+    // 1. Try server API first
     const res = await fetch(`/api/public/selection/${token}`);
     if (res.ok) {
-      return await res.json();
+      const data = await res.json();
+      if (data.client) {
+        // Also update local cache so it persists locally
+        const clients = getClients();
+        const existingIdx = clients.findIndex((c) => c.id === data.client.id);
+        if (existingIdx >= 0) {
+          clients[existingIdx] = data.client;
+        } else {
+          clients.unshift(data.client);
+        }
+        memoryClients = clients;
+        try {
+          localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clients));
+        } catch (_) {}
+
+        if (data.packages && Array.isArray(data.packages)) {
+          memoryPackages = data.packages;
+          try {
+            localStorage.setItem(STORAGE_KEYS.PACKAGES, JSON.stringify(data.packages));
+          } catch (_) {}
+        }
+
+        return {
+          ...data,
+          packages: data.packages || getAgencyPackages(),
+        };
+      }
     }
   } catch (err) {
-    console.warn('Erro ao carregar dados do servidor para seleção pública:', err);
+    console.warn('Server selection fetch failed, checking local storage:', err);
   }
 
-  // Fallback to local storage if offline or running in pure client
-  const allClients = getClients();
-  const client = allClients.find((c) => c.token === token);
-  if (!client) return null;
+  // 2. Fallback to local memory / storage
+  const localClient = getClientByToken(token);
+  if (localClient) {
+    const allPhotos = getModelPhotos();
+    const clientPhotos = allPhotos.filter((p) => localClient.modelPhotoIds.includes(p.id));
+    return { client: localClient, modelPhotos: clientPhotos, packages: getAgencyPackages() };
+  }
 
-  const allPhotos = getModelPhotos();
-  const modelPhotos = allPhotos.filter((p) => client.modelPhotoIds.includes(p.id));
-  const packages = getPackages();
-
-  return { client, modelPhotos, packages };
+  return null;
 };
 
 export const submitPublicSelectionData = async (
   token: string,
   chosenPhotoIds: string[]
-): Promise<boolean> => {
+): Promise<Client | null> => {
   try {
+    // 1. Send to server
     const res = await fetch(`/api/public/selection/${token}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chosenPhotoIds }),
     });
+
     if (res.ok) {
-      return true;
+      const result = await res.json();
+      if (result.client) {
+        updateClientByToken(token, () => result.client);
+        return result.client;
+      }
     }
   } catch (err) {
-    console.warn('Falha no envio da seleção para a API, salvando localmente:', err);
+    console.warn('Failed to submit selection to server API, updating local storage:', err);
   }
 
-  // Fallback local persistence
-  const allClients = getClients();
-  const idx = allClients.findIndex((c) => c.token === token);
-  if (idx >= 0) {
-    allClients[idx].chosenPhotoIds = chosenPhotoIds;
-    allClients[idx].status = 'Selecionado';
-    allClients[idx].selectionSubmittedAt = new Date().toISOString();
-    saveClients(allClients);
-    return true;
-  }
-  return false;
+  // Fallback local update
+  const updated = updateClientByToken(token, (c) => ({
+    ...c,
+    chosenPhotoIds,
+    status: 'Selecionado',
+    selectionSubmittedAt: new Date().toISOString(),
+  }));
+
+  return updated || null;
 };
 
-// ---------------- PUBLIC APPROVAL API FETCHERS (NEW) ----------------
-export const fetchPublicApprovalData = async (token: string): Promise<{
-  client: Client;
-  approvalPhotos: ApprovalPhoto[];
-} | null> => {
-  try {
-    const res = await fetch(`/api/public/approval/${token}`);
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.warn('Erro ao carregar dados da API de aprovação final:', err);
-  }
-
-  // Local fallback
-  const allClients = getClients();
-  const client = allClients.find((c) => c.token === token);
-  if (!client) return null;
-
-  return {
-    client,
-    approvalPhotos: client.approvalPhotos || [],
-  };
-};
-
-export const submitPublicApprovalData = async (
-  token: string,
-  approvalPhotos: ApprovalPhoto[],
-  feedback?: string
-): Promise<boolean> => {
-  try {
-    const res = await fetch(`/api/public/approval/${token}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approvalPhotos, feedback }),
-    });
-    if (res.ok) {
-      return true;
-    }
-  } catch (err) {
-    console.warn('Falha ao enviar aprovação para API, salvando localmente:', err);
-  }
-
-  // Fallback local
-  const allClients = getClients();
-  const idx = allClients.findIndex((c) => c.token === token);
-  if (idx >= 0) {
-    allClients[idx].approvalPhotos = approvalPhotos;
-    allClients[idx].approvalFeedback = feedback;
-    allClients[idx].status = 'Em Edição';
-    allClients[idx].approvalSubmittedAt = new Date().toISOString();
-    saveClients(allClients);
-    return true;
-  }
-  return false;
-};
-
-// ---------------- PUBLIC DELIVERY API FETCHERS ----------------
-export const fetchPublicDeliveryData = async (token: string): Promise<{
-  client: Client;
-} | null> => {
+export const fetchPublicDeliveryData = async (token: string): Promise<Client | null> => {
   try {
     const res = await fetch(`/api/public/delivery/${token}`);
     if (res.ok) {
-      return await res.json();
+      const data = await res.json();
+      if (data.client) {
+        return data.client;
+      }
     }
   } catch (err) {
-    console.warn('Erro ao carregar dados do servidor para entrega pública:', err);
+    console.warn('Delivery fetch failed on server, trying local:', err);
   }
 
-  const allClients = getClients();
-  const client = allClients.find((c) => c.token === token);
-  if (!client) return null;
-
-  return { client };
+  return getClientByToken(token) || null;
 };
 
-// ---------------- PUBLIC MODELOS SHOWCASE API FETCHERS ----------------
-export const fetchPublicModelosShowcase = async (): Promise<{
+export interface PublicModelosData {
   categories: Category[];
   modelPhotos: ModelPhoto[];
-  packages: PackageOption[];
-} | null> => {
+  packages: AgencyPackage[];
+}
+
+export const fetchPublicModelosData = async (): Promise<PublicModelosData> => {
   try {
     const res = await fetch('/api/public/modelos');
     if (res.ok) {
-      return await res.json();
+      const data = await res.json();
+      if (data.categories && data.modelPhotos) {
+        return {
+          categories: data.categories,
+          modelPhotos: data.modelPhotos,
+          packages: data.packages || getAgencyPackages(),
+        };
+      }
     }
   } catch (err) {
-    console.warn('Erro ao buscar modelos do servidor:', err);
+    console.warn('Fetch public modelos from server failed, using local cache:', err);
   }
 
   return {
     categories: getCategories(),
     modelPhotos: getModelPhotos(),
-    packages: getPackages(),
+    packages: getAgencyPackages(),
   };
-};
-
-export const submitPublicModelosLead = async (payload: {
-  name: string;
-  whatsapp: string;
-  email?: string;
-  referencePhotoUrl?: string;
-  selectedPhotoIds: string[];
-  notes?: string;
-}): Promise<{ success: boolean; client?: Client; error?: string }> => {
-  try {
-    const res = await fetch('/api/public/submit-modelos-lead', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      if (data.client) {
-        const clients = getClients();
-        const updated = [data.client, ...clients.filter((c) => c.id !== data.client.id)];
-        localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(updated));
-        triggerStorageUpdate();
-      }
-      return { success: true, client: data.client };
-    }
-    return { success: false, error: data.error || 'Erro ao registrar solicitação' };
-  } catch (err: any) {
-    console.warn('Erro ao enviar lead público:', err);
-    // Fallback local creation
-    const newClient = addClient({
-      name: payload.name,
-      whatsapp: payload.whatsapp,
-      email: payload.email,
-      contractedSession: 'Outro',
-      categoryId: getCategories()[0]?.id || 'cat-outro',
-      modelPhotoIds: payload.selectedPhotoIds,
-      chosenPhotoIds: payload.selectedPhotoIds,
-      finalPhotos: [],
-      referencePhotoUrl: payload.referencePhotoUrl,
-      selectionNotes: payload.notes || 'Enviado através da página de Modelos de Ensaio Fotográfico',
-      source: 'public_models_showcase',
-      status: 'Selecionado',
-      selectionSubmittedAt: new Date().toISOString(),
-    });
-    return { success: true, client: newClient };
-  }
 };
 
 export interface ModelosLeadSubmission {
   name: string;
   whatsapp: string;
   email?: string;
-  referencePhotoBase64?: string | null;
-  referencePhotoUrl?: string | null;
+  referencePhotoUrl?: string;
   selectedPhotoIds: string[];
   notes?: string;
 }
 
-export const fetchPublicModelosData = fetchPublicModelosShowcase;
+export const submitModelosSelection = async (
+  payload: ModelosLeadSubmission
+): Promise<Client | null> => {
+  try {
+    const res = await fetch('/api/public/submit-modelos-lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-export const submitModelosSelection = async (payload: ModelosLeadSubmission) => {
-  return submitPublicModelosLead({
-    name: payload.name,
-    whatsapp: payload.whatsapp,
-    email: payload.email,
-    referencePhotoUrl: payload.referencePhotoBase64 || payload.referencePhotoUrl || undefined,
-    selectedPhotoIds: payload.selectedPhotoIds,
-    notes: payload.notes,
-  });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.client) {
+        // Update local clients
+        const clients = getClients();
+        clients.unshift(data.client);
+        memoryClients = clients;
+        try {
+          localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(clients));
+        } catch (_) {}
+        notifyStorageUpdate();
+        return data.client;
+      }
+    }
+  } catch (err) {
+    console.warn('Server lead submission failed, generating local client:', err);
+  }
+
+  // Local fallback
+  const firstPhoto = getModelPhotos().find((p) => payload.selectedPhotoIds.includes(p.id));
+  const categoryId = firstPhoto?.categoryId || getCategories()[0]?.id || 'cat-outro';
+  const token = `tok-outro-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const newClient: Client = {
+    id: `cli-outro-${Date.now()}`,
+    name: payload.name.trim(),
+    whatsapp: payload.whatsapp.trim(),
+    email: payload.email?.trim() || undefined,
+    contractedSession: 'Outro',
+    categoryId,
+    modelPhotoIds: payload.selectedPhotoIds,
+    chosenPhotoIds: payload.selectedPhotoIds,
+    finalPhotos: [],
+    referencePhotoUrl: payload.referencePhotoUrl || undefined,
+    selectionNotes: payload.notes || 'Enviado através da página de Modelos de Ensaio Fotográfico',
+    source: 'public_models_showcase',
+    status: 'Selecionado',
+    token,
+    createdAt: new Date().toISOString(),
+    selectionSubmittedAt: new Date().toISOString(),
+  };
+
+  const clients = getClients();
+  clients.unshift(newClient);
+  saveClients(clients);
+  return newClient;
 };
+
+export const getApiSettings = (): ApiSettings => {
+  if (memoryApiSettings) return memoryApiSettings;
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.API_SETTINGS);
+    if (!data) {
+      localStorage.setItem(STORAGE_KEYS.API_SETTINGS, JSON.stringify(INITIAL_API_SETTINGS));
+      memoryApiSettings = INITIAL_API_SETTINGS;
+      return INITIAL_API_SETTINGS;
+    }
+    const parsed = JSON.parse(data);
+    memoryApiSettings = parsed;
+    return parsed;
+  } catch {
+    return memoryApiSettings || INITIAL_API_SETTINGS;
+  }
+};
+
+export const saveApiSettings = (settings: ApiSettings): void => {
+  memoryApiSettings = settings;
+  try {
+    localStorage.setItem(STORAGE_KEYS.API_SETTINGS, JSON.stringify(settings));
+  } catch (err) {
+    console.warn('Could not save api settings to localStorage:', err);
+  }
+  notifyStorageUpdate();
+  pushFullSyncToServer();
+};
+
+export const generateUniqueToken = (prefix = 'tok'): string => {
+  const randomStr = Math.random().toString(36).substring(2, 10);
+  const timeStr = Date.now().toString(36).substring(4);
+  return `${prefix}-${randomStr}-${timeStr}`;
+};
+

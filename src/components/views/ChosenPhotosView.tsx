@@ -1,27 +1,27 @@
 import React, { useState } from 'react';
 import {
-  CheckCircle2,
-  Users,
+  HeartHandshake,
   Copy,
-  ExternalLink,
-  MessageSquare,
+  Users,
+  CheckCircle2,
   Sparkles,
   ArrowRight,
-  ShieldCheck,
-  Calendar,
-  Image as ImageIcon,
+  PackageCheck,
+  ExternalLink,
+  MessageCircle,
+  RefreshCw,
   Clock,
-  Eye,
+  Send,
 } from 'lucide-react';
-import { updateClient } from '../../utils/storage';
-import { useToast } from '../Toast';
 import { Client, ModelPhoto } from '../../types';
+import { saveClients, syncDataFromServer, getModelPhotos } from '../../utils/storage';
+import { useToast } from '../Toast';
 import { NavView } from '../Sidebar';
 
 interface ChosenPhotosViewProps {
   clients: Client[];
   modelPhotos: ModelPhoto[];
-  onNavigate?: (view: NavView) => void;
+  onNavigate: (view: NavView) => void;
 }
 
 export const ChosenPhotosView: React.FC<ChosenPhotosViewProps> = ({
@@ -29,253 +29,287 @@ export const ChosenPhotosView: React.FC<ChosenPhotosViewProps> = ({
   modelPhotos,
   onNavigate,
 }) => {
-  const { addToast } = useToast();
-  const [selectedClientId, setSelectedClientId] = useState<string>(
-    clients[0]?.id || ''
+  const { showToast } = useToast();
+  const [selectedClientId, setSelectedClientId] = useState<string>('todos');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Filter only clients who have selected photos and are NOT yet delivered (Entregue)
+  const clientsWithSelections = clients.filter(
+    (c) =>
+      c.status !== 'Entregue' &&
+      ((c.chosenPhotoIds && c.chosenPhotoIds.length > 0) ||
+        c.status === 'Selecionado' ||
+        c.status === 'Em produção')
   );
-  const [activePreviewPhoto, setActivePreviewPhoto] = useState<ModelPhoto | null>(null);
 
-  const selectedClient = clients.find((c) => c.id === selectedClientId) || clients[0];
+  const displayedClients =
+    selectedClientId === 'todos'
+      ? clientsWithSelections
+      : clientsWithSelections.filter((c) => c.id === selectedClientId);
 
-  const chosenPhotos = selectedClient
-    ? modelPhotos.filter((p) => selectedClient.chosenPhotoIds.includes(p.id))
-    : [];
-
-  const copySelectionLink = (token: string) => {
-    const url = `${window.location.origin}${window.location.pathname}#/selecao/${token}`;
-    navigator.clipboard.writeText(url);
-    addToast('Link de Seleção copiado para a área de transferência!', 'success');
+  const handleManualSync = async () => {
+    try {
+      setIsSyncing(true);
+      await syncDataFromServer();
+      showToast('Seleções sincronizadas com sucesso!', 'success');
+    } catch {
+      showToast('Erro ao sincronizar dados.', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const openSelectionPage = (token: string) => {
-    const url = `${window.location.origin}${window.location.pathname}#/selecao/${token}`;
-    window.open(url, '_blank');
+  const handleCopyPrompt = (promptText: string, photoName: string, clientName: string) => {
+    navigator.clipboard.writeText(promptText);
+    showToast(`Prompt de "${photoName}" (Cliente: ${clientName}) copiado!`, 'success');
+  };
+
+  const handleCopyAllClientPrompts = (client: Client) => {
+    const allPhotos = modelPhotos.length > 0 ? modelPhotos : getModelPhotos();
+    const chosenPhotos = allPhotos.filter((p) => client.chosenPhotoIds?.includes(p.id));
+    
+    if (chosenPhotos.length === 0) {
+      showToast('Nenhum prompt disponível para copiar.', 'error');
+      return;
+    }
+
+    const allPrompts = chosenPhotos
+      .map((p, idx) => `[Foto ${idx + 1}: ${p.name}]\n${p.prompt}`)
+      .join('\n\n---\n\n');
+
+    navigator.clipboard.writeText(allPrompts);
+    showToast(`Todos os ${chosenPhotos.length} prompts de ${client.name} copiados!`, 'success');
+  };
+
+  const handleMarkInProduction = (client: Client) => {
+    const updated = clients.map((c) =>
+      c.id === client.id ? { ...c, status: 'Em produção' as const } : c
+    );
+    saveClients(updated);
+    showToast(`${client.name} movido para status "Em produção"!`, 'success');
   };
 
   return (
-    <div className="space-y-8 animate-fadeIn">
-      {/* Header Banner */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-amber-500/10 via-amber-600/5 to-transparent border border-amber-500/20 shadow-sm relative overflow-hidden">
-        <div className="max-w-3xl">
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs font-semibold uppercase tracking-wider mb-2">
-            <CheckCircle2 className="w-4 h-4" />
-            Etapa 5 • Escolhas do Cliente
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight mb-3">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+            <HeartHandshake className="w-5 h-5 text-emerald-600" />
             Fotos Escolhidas pelos Clientes
           </h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
-            Visualize em tempo real quais poses e fotos modelo cada cliente selecionou para o ensaio. Utilize esta lista como referência visual durante a sessão de fotos e no tratamento preliminar.
+          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
+            Acompanhe as escolhas confirmadas pelos clientes, copie os prompts para geração na IA e avance para produção.
           </p>
         </div>
-      </div>
 
-      {/* Select Client & Status Box */}
-      <div className="p-6 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex-1 max-w-md">
-            <label className="block text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-2">
-              Selecione o Cliente:
-            </label>
-            <select
-              value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
-              className="w-full pl-4 pr-10 py-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl text-sm font-semibold text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-            >
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} • {c.contractedSession || 'Ensaio'} ({c.status})
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Filter and Sync Button */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors shadow-2xs cursor-pointer"
+            title="Verificar novas seleções recebidas dos clientes"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-500' : ''}`} />
+            <span>{isSyncing ? 'Sincronizando...' : 'Atualizar Seleções'}</span>
+          </button>
 
-          {selectedClient && (
-            <div className="flex items-center gap-2 pt-2 sm:pt-0">
-              <button
-                type="button"
-                onClick={() => copySelectionLink(selectedClient.token)}
-                className="px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/60 text-xs font-bold flex items-center gap-2 hover:bg-amber-100 dark:hover:bg-amber-900/80 transition-colors shadow-2xs cursor-pointer"
+          {clientsWithSelections.length > 0 && (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedClientId}
+                onChange={(e) => setSelectedClientId(e.target.value)}
+                className="px-3 py-1.5 text-xs bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-800 dark:text-zinc-200 focus:outline-hidden font-medium"
               >
-                <Copy className="w-4 h-4" />
-                <span>Copiar Link de Seleção</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => openSelectionPage(selectedClient.token)}
-                className="px-4 py-2.5 rounded-xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs font-bold flex items-center gap-2 hover:bg-zinc-800 dark:hover:bg-white transition-colors shadow-2xs cursor-pointer"
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span>Abrir Seleção</span>
-              </button>
+                <option value="todos">Todos com Escolhas ({clientsWithSelections.length})</option>
+                {clientsWithSelections.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.chosenPhotoIds?.length || 0} fotos) - [{c.status}]
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </div>
-
-        {/* Selected Client Summary Card */}
-        {selectedClient && (
-          <div className="p-5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                  {selectedClient.name}
-                </span>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800">
-                  {selectedClient.contractedSession || 'Ensaio'}
-                </span>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    selectedClient.status === 'Selecionado'
-                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300'
-                  }`}
-                >
-                  {selectedClient.status}
-                </span>
-              </div>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                WhatsApp: {selectedClient.whatsapp} {selectedClient.email && `• E-mail: ${selectedClient.email}`}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4 text-xs font-semibold">
-              <div className="text-zinc-600 dark:text-zinc-400">
-                Fotos Enviadas: <strong className="text-zinc-900 dark:text-zinc-100">{selectedClient.modelPhotoIds.length}</strong>
-              </div>
-              <div className="text-zinc-600 dark:text-zinc-400">
-                Fotos Escolhidas: <strong className="text-amber-600 dark:text-amber-400">{selectedClient.chosenPhotoIds.length}</strong>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Client Reference Photo & Notes Banner */}
-        {selectedClient && (selectedClient.referencePhotoUrl || selectedClient.selectionNotes) && (
-          <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col sm:flex-row items-start gap-4">
-            {selectedClient.referencePhotoUrl && (
-              <div className="shrink-0">
-                <p className="text-[11px] font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
-                  Foto de Referência do Cliente:
-                </p>
-                <img
-                  src={selectedClient.referencePhotoUrl}
-                  alt="Referência"
-                  className="w-24 h-24 sm:w-28 sm:h-28 object-cover rounded-xl border border-amber-500/30 shadow-md"
-                />
-              </div>
-            )}
-            {selectedClient.selectionNotes && (
-              <div className="flex-1 text-xs text-amber-900 dark:text-amber-200 space-y-1">
-                <p className="font-bold flex items-center gap-1.5 text-amber-800 dark:text-amber-400">
-                  <MessageSquare className="w-4 h-4" />
-                  Observações do Cliente na Seleção:
-                </p>
-                <p className="italic font-normal bg-white/40 dark:bg-zinc-900/40 p-3 rounded-xl border border-amber-500/20">
-                  "{selectedClient.selectionNotes}"
-                </p>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Grid of Chosen Photos */}
-      {selectedClient && (
-        <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              <ImageIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-              Fotos Modelo Escolhidas ({chosenPhotos.length})
-            </h2>
-
-            {onNavigate && (
-              <button
-                type="button"
-                onClick={() => onNavigate('approval_photos')}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold text-xs shadow-md shadow-amber-500/20 flex items-center gap-2 cursor-pointer transition-all"
-              >
-                <span>Avançar para Fotos para Aprovação Final</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
+      {/* Empty State */}
+      {displayedClients.length === 0 ? (
+        <div className="text-center py-16 px-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center mx-auto shadow-xs">
+            <HeartHandshake className="w-7 h-7" />
           </div>
-
-          {chosenPhotos.length === 0 ? (
-            <div className="text-center py-16 bg-zinc-50 dark:bg-zinc-800/40 rounded-2xl border border-zinc-200 dark:border-zinc-800">
-              <Clock className="w-12 h-12 text-zinc-400 mx-auto mb-3" />
-              <p className="text-sm font-bold text-zinc-700 dark:text-zinc-300">
-                O cliente ainda não confirmou a escolha das fotos
-              </p>
-              <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
-                Envie o link de seleção para o cliente via WhatsApp. Assim que ele escolher, as fotos aparecerão aqui automaticamente.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {chosenPhotos.map((photo, index) => (
-                <div
-                  key={photo.id}
-                  className="group relative rounded-2xl overflow-hidden bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex flex-col shadow-2xs hover:shadow-md transition-shadow"
-                >
-                  <div className="relative aspect-[3/4] bg-zinc-950 overflow-hidden">
-                    <img
-                      src={photo.imageUrl}
-                      alt={photo.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-bold text-white">
-                      #{index + 1}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActivePreviewPhoto(photo)}
-                      className="absolute bottom-2 right-2 p-2 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Ver ampliado"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="p-3">
-                    <h3 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate">
-                      {photo.name}
-                    </h3>
-                    {photo.promptSnippet && (
-                      <p className="text-[10px] text-zinc-400 truncate mt-0.5">
-                        {photo.promptSnippet}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Expanded Modal */}
-      {activePreviewPhoto && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
-          onClick={() => setActivePreviewPhoto(null)}
-        >
-          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
-            <img
-              src={activePreviewPhoto.imageUrl}
-              alt={activePreviewPhoto.name}
-              className="max-w-full max-h-[80vh] rounded-2xl object-contain border border-zinc-800 shadow-2xl"
-            />
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-zinc-800 dark:text-zinc-200">
+              Nenhuma seleção confirmada pendente
+            </h3>
+            <p className="text-xs text-zinc-500 max-w-md mx-auto leading-relaxed">
+              Quando seus clientes abrirem o link enviado e confirmarem as fotos favoritas, as escolhas e os prompts correspondentes aparecerão aqui instantaneamente.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <button
-              type="button"
-              onClick={() => setActivePreviewPhoto(null)}
-              className="mt-4 px-6 py-2 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold border border-zinc-700"
+              onClick={() => onNavigate('clients')}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-all shadow-xs"
             >
-              Fechar Visualização
+              <Users className="w-4 h-4" />
+              Ver Clientes & Enviar Links
+            </button>
+            <button
+              onClick={handleManualSync}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Verificar Agora
             </button>
           </div>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {displayedClients.map((client) => {
+            const allPhotos = modelPhotos.length > 0 ? modelPhotos : getModelPhotos();
+            const chosenPhotos = allPhotos.filter((p) => client.chosenPhotoIds?.includes(p.id));
+
+            return (
+              <div
+                key={client.id}
+                className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-2xs space-y-4 sm:space-y-5 p-3.5 sm:p-6"
+              >
+                {/* Client Header Info */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 pb-3.5 sm:pb-4 border-b border-zinc-100 dark:border-zinc-800">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-100">
+                        {client.name}
+                      </h3>
+                      <span
+                        className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                          client.status === 'Selecionado'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                            : client.status === 'Em produção'
+                            ? 'bg-purple-50 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                            : 'bg-zinc-100 text-zinc-700 border-zinc-200'
+                        }`}
+                      >
+                        {client.status}
+                      </span>
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                        {client.chosenPhotoIds?.length || 0} Fotos
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {client.contractedSession}
+                      {client.selectionSubmittedAt && (
+                        <span>
+                          {' '}• Enviada em:{' '}
+                          {new Date(client.selectionSubmittedAt).toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Actions for this client */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => handleCopyAllClientPrompts(client)}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copiar Todos os Prompts</span>
+                    </button>
+
+                    {client.status === 'Selecionado' && (
+                      <button
+                        onClick={() => handleMarkInProduction(client)}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 rounded-xl hover:bg-purple-100 transition-colors cursor-pointer shadow-2xs"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Mover p/ Produção</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => onNavigate('final_delivery')}
+                      className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-all shadow-xs cursor-pointer"
+                    >
+                      <PackageCheck className="w-3.5 h-3.5" />
+                      <span>Ir para Entrega Final</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Grid of chosen photos for this client */}
+                {chosenPhotos.length === 0 ? (
+                  <div className="p-6 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl text-center text-xs text-zinc-500">
+                    Nenhuma foto correspondente encontrada para os IDs selecionados ({client.chosenPhotoIds?.join(', ')}).
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-5 pt-2">
+                    {chosenPhotos.map((photo, index) => (
+                      <div
+                        key={photo.id}
+                        className="bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl overflow-hidden flex flex-col justify-between shadow-2xs"
+                      >
+                        <div>
+                          {/* Photo Image 3:4 Padrão Vertical */}
+                          <div className="relative aspect-[3/4] bg-zinc-950 overflow-hidden">
+                            <img
+                              src={photo.imageUrl}
+                              alt={photo.name}
+                              className="w-full h-full object-cover object-top"
+                              loading="lazy"
+                            />
+                            <div className="absolute top-2 left-2">
+                              <span className="text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-600 text-white shadow-xs">
+                                #{index + 1}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Details */}
+                          <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+                            <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                              {photo.name}
+                            </h4>
+
+                            <div className="p-2 sm:p-2.5 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 block mb-1">
+                                Prompt IA
+                              </span>
+                              <p className="text-[11px] sm:text-xs text-zinc-700 dark:text-zinc-300 font-mono line-clamp-3 sm:line-clamp-4 leading-snug select-all">
+                                {photo.prompt}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bottom Button */}
+                        <div className="p-3 sm:p-4 pt-0">
+                          <button
+                            onClick={() => handleCopyPrompt(photo.prompt, photo.name, client.name)}
+                            className="w-full flex items-center justify-center gap-1.5 py-2 px-2.5 text-[11px] sm:text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-all shadow-xs cursor-pointer"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copiar Prompt</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 };
+
