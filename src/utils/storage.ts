@@ -669,3 +669,74 @@ export const generateUniqueToken = (prefix = 'tok'): string => {
   return `${prefix}-${randomStr}-${timeStr}`;
 };
 
+/**
+ * Faz upload de uma única imagem para o Vercel Blob através da rota /api/upload-image.
+ * Aceita um arquivo File, Blob ou uma string em formato base64 / Data URL.
+ * Retorna a URL pública permanente gerada no Vercel Blob (ou fallback local).
+ */
+export async function uploadImageToBlob(
+  fileOrDataUrl: File | Blob | string,
+  customFilename?: string
+): Promise<string> {
+  // Se já for uma URL externa ou blob http/https, não precisa reenviar
+  if (typeof fileOrDataUrl === 'string') {
+    if (fileOrDataUrl.startsWith('http://') || fileOrDataUrl.startsWith('https://')) {
+      return fileOrDataUrl;
+    }
+  }
+
+  try {
+    let base64Data = '';
+    let filename = customFilename || `foto-${Date.now()}.jpg`;
+
+    if (typeof fileOrDataUrl === 'string') {
+      base64Data = fileOrDataUrl;
+    } else {
+      if (fileOrDataUrl instanceof File) {
+        filename = customFilename || fileOrDataUrl.name;
+      }
+      base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(fileOrDataUrl);
+      });
+    }
+
+    const response = await fetch('/api/upload-image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image: base64Data,
+        filename,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.url) {
+        return data.url;
+      }
+    } else {
+      const err = await response.json().catch(() => ({}));
+      console.warn('Upload para Vercel Blob falhou, mantendo dados originais:', err);
+    }
+  } catch (err) {
+    console.warn('Erro ao conectar na rota /api/upload-image:', err);
+  }
+
+  // Fallback seguro: se falhar o upload ou em modo offline, retorna o próprio DataURL
+  if (typeof fileOrDataUrl === 'string') {
+    return fileOrDataUrl;
+  }
+  return new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(fileOrDataUrl);
+  });
+}
+
+

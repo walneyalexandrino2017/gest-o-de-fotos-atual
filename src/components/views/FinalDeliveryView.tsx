@@ -16,7 +16,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { Client, FinalPhoto } from '../../types';
-import { saveClients, generateUniqueToken } from '../../utils/storage';
+import { saveClients, generateUniqueToken, uploadImageToBlob } from '../../utils/storage';
 import { compressImageFile } from '../../utils/imageCompressor';
 import { downloadImagesAsZip } from '../../utils/zip';
 import { useToast } from '../Toast';
@@ -67,14 +67,15 @@ export const FinalDeliveryView: React.FC<FinalDeliveryViewProps> = ({ clients })
       setIsProcessingUpload(true);
       const newFinalPhotos: FinalPhoto[] = [];
 
-      // Process files with compression
+      // Process files with compression and upload to Vercel Blob one by one
       for (const file of uploadedFiles) {
         const dataUrl = await compressImageFile(file, 1600, 1600, 0.85);
+        const blobUrl = await uploadImageToBlob(dataUrl, file.name);
 
         newFinalPhotos.push({
           id: generateUniqueToken('fin'),
           name: file.name,
-          imageUrl: dataUrl,
+          imageUrl: blobUrl,
           createdAt: new Date().toISOString(),
         });
       }

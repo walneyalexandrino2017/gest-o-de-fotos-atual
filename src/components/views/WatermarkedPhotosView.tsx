@@ -23,7 +23,7 @@ import {
   FileCheck,
 } from 'lucide-react';
 import { Client, WatermarkedPhoto } from '../../types';
-import { saveClients, generateUniqueToken, syncDataFromServer } from '../../utils/storage';
+import { saveClients, generateUniqueToken, syncDataFromServer, uploadImageToBlob } from '../../utils/storage';
 import { compressImageFile } from '../../utils/imageCompressor';
 import { useToast } from '../Toast';
 import { ConfirmModal } from '../ConfirmModal';
@@ -103,14 +103,15 @@ export const WatermarkedPhotosView: React.FC<WatermarkedPhotosViewProps> = ({
       setIsProcessingUpload(true);
       const newWatermarkedPhotos: WatermarkedPhoto[] = [];
 
-      // Process files with compression
+      // Process files with compression and upload to Vercel Blob one by one
       for (const file of uploadedFiles) {
         const dataUrl = await compressImageFile(file, 1600, 1600, 0.85);
+        const blobUrl = await uploadImageToBlob(dataUrl, file.name);
 
         newWatermarkedPhotos.push({
           id: generateUniqueToken('wm'),
           name: file.name,
-          imageUrl: dataUrl,
+          imageUrl: blobUrl,
           approved: false,
           clientFeedback: '',
           createdAt: new Date().toISOString(),

@@ -28,7 +28,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { Category, ModelPhoto, AgencyPackage, Client } from '../../types';
-import { fetchPublicModelosData, submitModelosSelection, ModelosLeadSubmission } from '../../utils/storage';
+import { fetchPublicModelosData, submitModelosSelection, ModelosLeadSubmission, uploadImageToBlob } from '../../utils/storage';
 
 export const PublicModelosPage: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -180,11 +180,20 @@ export const PublicModelosPage: React.FC = () => {
 
     try {
       setIsSubmitting(true);
+
+      let finalReferencePhotoUrl = referencePhotoBase64;
+      if (referencePhotoBase64) {
+        finalReferencePhotoUrl = await uploadImageToBlob(
+          referencePhotoBase64,
+          `ref-${clientName.trim().replace(/\s+/g, '_')}-${Date.now()}.jpg`
+        );
+      }
+
       const payload: ModelosLeadSubmission = {
         name: clientName.trim(),
         whatsapp: clientWhatsapp.trim(),
         email: clientEmail.trim() || undefined,
-        referencePhotoUrl: referencePhotoBase64,
+        referencePhotoUrl: finalReferencePhotoUrl,
         selectedPhotoIds: targetPhotoIds,
         notes: notes.trim() || undefined,
       };

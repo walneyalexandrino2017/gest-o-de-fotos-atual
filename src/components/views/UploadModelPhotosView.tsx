@@ -16,7 +16,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { Category, ModelPhoto } from '../../types';
-import { saveModelPhotos, deleteModelPhoto, generateUniqueToken } from '../../utils/storage';
+import { saveModelPhotos, deleteModelPhoto, generateUniqueToken, uploadImageToBlob } from '../../utils/storage';
 import { compressImageFile } from '../../utils/imageCompressor';
 import { generatePhotographyPromptWithAI } from '../../utils/gemini';
 import { useToast } from '../Toast';
@@ -42,6 +42,7 @@ export const UploadModelPhotosView: React.FC<UploadModelPhotosViewProps> = ({
   const [imageUrl, setImageUrl] = useState('');
   const [imagePreview, setImagePreview] = useState<string>('');
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Gemini AI generation state
   const [conceptIdea, setConceptIdea] = useState('');
@@ -141,7 +142,7 @@ export const UploadModelPhotosView: React.FC<UploadModelPhotosViewProps> = ({
     }
   };
 
-  const handleSubmitPhoto = (e: React.FormEvent) => {
+  const handleSubmitPhoto = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const finalImage = imagePreview || imageUrl.trim();
@@ -163,26 +164,36 @@ export const UploadModelPhotosView: React.FC<UploadModelPhotosViewProps> = ({
       return;
     }
 
-    const newPhoto: ModelPhoto = {
-      id: generateUniqueToken('photo'),
-      name: name.trim(),
-      categoryId: targetCategoryId,
-      prompt: prompt.trim(),
-      imageUrl: finalImage,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      setIsUploading(true);
+      // Upload image to Vercel Blob individually (one at a time)
+      const uploadedUrl = await uploadImageToBlob(finalImage, `${name.trim()}.jpg`);
 
-    const updated = [newPhoto, ...modelPhotos];
-    saveModelPhotos(updated);
+      const newPhoto: ModelPhoto = {
+        id: generateUniqueToken('photo'),
+        name: name.trim(),
+        categoryId: targetCategoryId,
+        prompt: prompt.trim(),
+        imageUrl: uploadedUrl,
+        createdAt: new Date().toISOString(),
+      };
 
-    showToast(`Foto modelo "${newPhoto.name}" cadastrada e salva com sucesso!`, 'success');
+      const updated = [newPhoto, ...modelPhotos];
+      saveModelPhotos(updated);
 
-    // Reset Form
-    setName('');
-    setPrompt('');
-    setImageUrl('');
-    setImagePreview('');
-    setConceptIdea('');
+      showToast(`Foto modelo "${newPhoto.name}" cadastrada e salva com sucesso!`, 'success');
+
+      // Reset Form
+      setName('');
+      setPrompt('');
+      setImageUrl('');
+      setImagePreview('');
+      setConceptIdea('');
+    } catch (err: any) {
+      showToast('Erro ao realizar upload da foto para o servidor.', 'error');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   // Open Edit Modal
@@ -234,7 +245,7 @@ export const UploadModelPhotosView: React.FC<UploadModelPhotosViewProps> = ({
     }
   };
 
-  const handleSaveEditedPhoto = (e: React.FormEvent) => {
+  const handleSaveEditedPhoto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPhoto) return;
 
@@ -252,19 +263,28 @@ export const UploadModelPhotosView: React.FC<UploadModelPhotosViewProps> = ({
       return;
     }
 
-    const updatedPhoto: ModelPhoto = {
-      ...editingPhoto,
-      name: editName.trim(),
-      categoryId: editCategoryId || editingPhoto.categoryId,
-      prompt: editPrompt.trim(),
-      imageUrl: finalImage,
-    };
+    try {
+      setIsCompressingEdit(true);
+      const uploadedUrl = await uploadImageToBlob(finalImage, `${editName.trim()}.jpg`);
 
-    const updated = modelPhotos.map((p) => (p.id === editingPhoto.id ? updatedPhoto : p));
-    saveModelPhotos(updated);
+      const updatedPhoto: ModelPhoto = {
+        ...editingPhoto,
+        name: editName.trim(),
+        categoryId: editCategoryId || editingPhoto.categoryId,
+        prompt: editPrompt.trim(),
+        imageUrl: uploadedUrl,
+      };
 
-    showToast(`Foto modelo "${updatedPhoto.name}" editada e salva com sucesso!`, 'success');
-    setEditingPhoto(null);
+      const updated = modelPhotos.map((p) => (p.id === editingPhoto.id ? updatedPhoto : p));
+      saveModelPhotos(updated);
+
+      showToast(`Foto modelo "${updatedPhoto.name}" editada e salva com sucesso!`, 'success');
+      setEditingPhoto(null);
+    } catch (err: any) {
+      showToast('Erro ao salvar alterações da foto.', 'error');
+    } finally {
+      setIsCompressingEdit(false);
+    }
   };
 
   const confirmDeletePhoto = () => {
@@ -492,11 +512,20 @@ export const UploadModelPhotosView: React.FC<UploadModelPhotosViewProps> = ({
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-100 dark:border-zinc-800">
             <button
               type="submit"
-              disabled={isCompressing}
+              disabled={isCompressing || isUploading}
               className="px-6 py-2.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 disabled:opacity-50 rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
             >
-              <UploadCloud className="w-4 h-4" />
-              <span>Cadastrar Foto Modelo & Salvar</span>
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Enviando para nuvem...</span>
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="w-4 h-4" />
+                  <span>Cadastrar Foto Modelo & Salvar</span>
+                </>
+              )}
             </button>
           </div>
         </form>

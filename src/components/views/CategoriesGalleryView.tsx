@@ -16,7 +16,7 @@ import {
   Check,
 } from 'lucide-react';
 import { Category, ModelPhoto } from '../../types';
-import { saveCategories, saveModelPhotos, generateUniqueToken } from '../../utils/storage';
+import { saveCategories, saveModelPhotos, generateUniqueToken, uploadImageToBlob } from '../../utils/storage';
 import { compressImageFile } from '../../utils/imageCompressor';
 import { generatePhotographyPromptWithAI } from '../../utils/gemini';
 import { useToast } from '../Toast';
@@ -79,7 +79,8 @@ export const CategoriesGalleryView: React.FC<CategoriesGalleryViewProps> = ({
       try {
         setIsProcessingCover(true);
         const dataUrl = await compressImageFile(file, 1200, 800, 0.8);
-        setNewCatCoverUrl(dataUrl);
+        const blobUrl = await uploadImageToBlob(dataUrl, file.name);
+        setNewCatCoverUrl(blobUrl);
       } catch {
         showToast('Erro ao processar imagem de capa.', 'error');
       } finally {
@@ -94,7 +95,8 @@ export const CategoriesGalleryView: React.FC<CategoriesGalleryViewProps> = ({
       try {
         setIsProcessingEditCover(true);
         const dataUrl = await compressImageFile(file, 1200, 800, 0.8);
-        setEditCatCoverUrl(dataUrl);
+        const blobUrl = await uploadImageToBlob(dataUrl, file.name);
+        setEditCatCoverUrl(blobUrl);
       } catch {
         showToast('Erro ao processar nova imagem de capa.', 'error');
       } finally {
@@ -184,7 +186,8 @@ export const CategoriesGalleryView: React.FC<CategoriesGalleryViewProps> = ({
         setIsProcessingEditPhoto(true);
         const dataUrl = await compressImageFile(file, 1400, 1400, 0.82);
         setEditPhotoPreview(dataUrl);
-        setEditPhotoImageUrl(dataUrl);
+        const blobUrl = await uploadImageToBlob(dataUrl, file.name);
+        setEditPhotoImageUrl(blobUrl);
       } catch {
         showToast('Erro ao processar imagem da foto modelo.', 'error');
       } finally {

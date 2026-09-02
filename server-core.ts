@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { Redis } from '@upstash/redis';
+import { put } from '@vercel/blob';
 
 dotenv.config();
 
@@ -584,16 +585,92 @@ Retorne SOMENTE o texto do prompt pronto para copiar, sem introduções ou expli
   }
 });
 
+// Upload single image to Vercel Blob (or local development storage)
+app.post('/api/upload-image', async (req, res) => {
+  try {
+    const { image, filename } = req.body;
+    if (!image) {
+      return res.status(400).json({ error: 'Nenhum arquivo de imagem foi enviado.' });
+    }
+
+    const safeFilename = filename
+      ? filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+      : `photo-${Date.now()}-${Math.random().toString(36).substring(2, 7)}.jpg`;
+
+    let buffer: Buffer;
+    let contentType = 'image/jpeg';
+
+    if (typeof image === 'string' && image.startsWith('data:')) {
+      const match = image.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        contentType = match[1];
+        buffer = Buffer.from(match[2], 'base64');
+      } else {
+        buffer = Buffer.from(image, 'base64');
+      }
+    } else if (typeof image === 'string') {
+      buffer = Buffer.from(image, 'base64');
+    } else {
+      buffer = Buffer.from(image);
+    }
+
+    // If Vercel Blob Token is set and not empty, upload directly to Vercel Blob
+    const blobToken = (process.env.BLOB_READ_WRITE_TOKEN || '').trim();
+    if (blobToken) {
+      const blob = await put(safeFilename, buffer, {
+        access: 'public',
+        contentType,
+        token: blobToken,
+      });
+
+      return res.json({
+        success: true,
+        url: blob.url,
+        downloadUrl: blob.downloadUrl,
+        pathname: blob.pathname,
+      });
+    }
+
+    // Fallback for local development if BLOB_READ_WRITE_TOKEN is not configured
+    const uploadsDir = path.join(DATA_DIR, 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    const ext = contentType.split('/')[1] || 'jpg';
+    const diskFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const diskPath = path.join(uploadsDir, diskFileName);
+    fs.writeFileSync(diskPath, buffer);
+
+    return res.json({
+      success: true,
+      url: `/api/uploads/${diskFileName}`,
+    });
+  } catch (err: any) {
+    console.error('Erro na rota /api/upload-image:', err);
+    return res.status(500).json({ error: err.message || 'Erro ao fazer upload da imagem.' });
+  }
+});
+
+// Static serve for locally uploaded images
+app.use('/api/uploads', express.static(path.join(DATA_DIR, 'uploads')));
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Admin Authentication endpoint
+// Admin Authentication endpoint (removida senha fixa no código)
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
   const masterEmail = process.env.ADMIN_EMAIL || 'alunodosenai3@gmail.com';
-  const masterPassword = process.env.ADMIN_PASSWORD || 'Tudodebom2026@#';
+  const masterPassword = process.env.ADMIN_PASSWORD;
+
+  if (!masterPassword) {
+    return res.status(500).json({
+      success: false,
+      error: 'A senha de administrador não foi configurada no servidor (ADMIN_PASSWORD).',
+    });
+  }
 
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanPassword = (password || '').trim();
