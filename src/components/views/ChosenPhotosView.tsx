@@ -14,6 +14,7 @@ import {
   Clock,
   Send,
   Trash2,
+  ShieldCheck,
 } from 'lucide-react';
 import { Client, ModelPhoto } from '../../types';
 import { saveClients, syncDataFromServer, getModelPhotos } from '../../utils/storage';
@@ -24,12 +25,14 @@ interface ChosenPhotosViewProps {
   clients: Client[];
   modelPhotos: ModelPhoto[];
   onNavigate: (view: NavView) => void;
+  onOpenBackupModal?: () => void;
 }
 
 export const ChosenPhotosView: React.FC<ChosenPhotosViewProps> = ({
   clients,
   modelPhotos,
   onNavigate,
+  onOpenBackupModal,
 }) => {
   const { showToast } = useToast();
   const [selectedClientId, setSelectedClientId] = useState<string>('todos');
@@ -122,8 +125,20 @@ export const ChosenPhotosView: React.FC<ChosenPhotosViewProps> = ({
           </p>
         </div>
 
-        {/* Filter and Sync Button */}
+        {/* Filter, Backup and Sync Button */}
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenBackupModal && (
+            <button
+              type="button"
+              onClick={onOpenBackupModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 rounded-xl transition-colors shadow-2xs cursor-pointer"
+              title="Exportar dados e fotos selecionadas para arquivo JSON"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Backup Seleções (JSON)</span>
+            </button>
+          )}
+
           <button
             onClick={handleManualSync}
             disabled={isSyncing}

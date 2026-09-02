@@ -16,6 +16,7 @@ import {
   Tag,
   Sparkles,
   Layers,
+  ShieldCheck,
 } from 'lucide-react';
 import { Client, Category, ModelPhoto } from '../../types';
 import { NavView } from '../Sidebar';
@@ -28,6 +29,7 @@ interface DashboardViewProps {
   categories: Category[];
   modelPhotos: ModelPhoto[];
   onNavigate: (view: NavView, actionPayload?: string) => void;
+  onOpenBackupModal?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -35,6 +37,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   categories,
   modelPhotos,
   onNavigate,
+  onOpenBackupModal,
 }) => {
   const { showToast } = useToast();
   const [selectedClientForLink, setSelectedClientForLink] = useState<Client | null>(null);
@@ -81,6 +84,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {onOpenBackupModal && (
+            <button
+              type="button"
+              onClick={onOpenBackupModal}
+              className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-zinc-800 dark:text-zinc-200 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl transition-all shadow-2xs cursor-pointer"
+              title="Backup Preventivo & Exportação JSON (Clientes e Fotos Selecionadas)"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              <span>Backup JSON</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsPackageModalOpen(true)}

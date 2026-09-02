@@ -27,6 +27,7 @@ import {
   Phone,
   Tag,
   Camera,
+  ShieldCheck,
 } from 'lucide-react';
 import { Client, ClientStatus, Category, ModelPhoto } from '../../types';
 import { saveClients, deleteClient, generateUniqueToken, syncDataFromServer } from '../../utils/storage';
@@ -40,6 +41,7 @@ interface ClientsViewProps {
   modelPhotos: ModelPhoto[];
   onNavigate: (view: NavView) => void;
   initialOpenCreateModal?: boolean;
+  onOpenBackupModal?: () => void;
 }
 
 const STATUS_BADGE_STYLES: Record<ClientStatus, { bg: string; text: string; border: string }> = {
@@ -84,6 +86,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   modelPhotos,
   onNavigate,
   initialOpenCreateModal = false,
+  onOpenBackupModal,
 }) => {
   const { showToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
@@ -394,20 +397,34 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            if (categories[0]) {
-              setSelectedCategoryId(categories[0].id);
-              const photosInCat = modelPhotos.filter((p) => p.categoryId === categories[0].id).map((p) => p.id);
-              setSelectedModelPhotoIds(photosInCat);
-            }
-            setIsCreateModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-all shadow-xs w-fit cursor-pointer"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Cadastrar Novo Cliente</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenBackupModal && (
+            <button
+              type="button"
+              onClick={onOpenBackupModal}
+              className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl transition-all shadow-2xs cursor-pointer"
+              title="Exportar dados de clientes e fotos selecionadas para arquivo JSON"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              <span>Backup / Exportar JSON</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              if (categories[0]) {
+                setSelectedCategoryId(categories[0].id);
+                const photosInCat = modelPhotos.filter((p) => p.categoryId === categories[0].id).map((p) => p.id);
+                setSelectedModelPhotoIds(photosInCat);
+              }
+              setIsCreateModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-all shadow-xs w-fit cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Cadastrar Novo Cliente</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter & Search Bar */}

@@ -15,6 +15,7 @@ import {
   Tag,
   LogOut,
   User,
+  ShieldCheck,
 } from 'lucide-react';
 import { Client } from '../types';
 import { getApiSettings } from '../utils/storage';
@@ -37,6 +38,7 @@ interface SidebarProps {
   clients: Client[];
   onOpenApiSettings?: () => void;
   onOpenPackageSettings?: () => void;
+  onOpenBackupSettings?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -47,6 +49,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   clients,
   onOpenApiSettings,
   onOpenPackageSettings,
+  onOpenBackupSettings,
 }) => {
   const [apiSettings, setApiSettings] = useState(getApiSettings());
 
@@ -274,6 +277,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
             <Settings className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+          </button>
+
+          {/* Backup Preventivo button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenBackupSettings) onOpenBackupSettings();
+              onCloseMobile();
+            }}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all text-zinc-300 hover:bg-zinc-800/80 hover:text-white cursor-pointer"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div className="truncate">
+                <p className="text-xs font-semibold leading-tight truncate">
+                  Backup Preventivo (JSON)
+                </p>
+                <p className="text-[10px] text-zinc-400 truncate">
+                  Exportar & baixar clientes
+                </p>
+              </div>
+            </div>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
           </button>
         </nav>
 

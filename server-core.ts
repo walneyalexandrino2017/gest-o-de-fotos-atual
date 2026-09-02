@@ -266,6 +266,77 @@ app.get('/api/clients', (req, res) => {
   res.json(memoryStore.clients);
 });
 
+// ----------------------------------------------------
+// PREVENTIVE BACKUP ENDPOINTS
+// ----------------------------------------------------
+const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+
+app.get('/api/backup/export', (req, res) => {
+  const photosMap = new Map<string, any>();
+  (memoryStore.modelPhotos || []).forEach((p: any) => photosMap.set(p.id, p));
+
+  const enrichedClients = (memoryStore.clients || []).map((client: any) => {
+    const chosenPhotosDetails = (client.chosenPhotoIds || []).map((photoId: string) => {
+      const found = photosMap.get(photoId);
+      return {
+        id: photoId,
+        name: found?.name || `Foto ID: ${photoId}`,
+        prompt: found?.prompt,
+        imageUrl: found?.imageUrl,
+      };
+    });
+
+    return {
+      ...client,
+      chosenPhotoCount: (client.chosenPhotoIds || []).length,
+      chosenPhotos: chosenPhotosDetails,
+    };
+  });
+
+  const now = new Date().toISOString();
+  const backupPayload = {
+    metadata: {
+      exportDate: now,
+      system: 'StudioPhoto Gestão & Ensaios IA',
+      version: '1.0.0',
+      type: 'preventive_backup',
+      totalClients: (memoryStore.clients || []).length,
+      totalModelPhotos: (memoryStore.modelPhotos || []).length,
+      environment: 'server',
+    },
+    clients: enrichedClients,
+    rawClients: memoryStore.clients,
+  };
+
+  res.setHeader('Content-Type', 'application/json');
+  res.json(backupPayload);
+});
+
+app.post('/api/backup/auto-save', async (req, res) => {
+  try {
+    const backupData = req.body;
+    if (!backupData) {
+      return res.status(400).json({ error: 'Nenhum dado de backup fornecido' });
+    }
+
+    if (!fs.existsSync(BACKUPS_DIR)) {
+      fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+    }
+
+    const latestFile = path.join(BACKUPS_DIR, 'latest-backup.json');
+    fs.writeFileSync(latestFile, JSON.stringify(backupData, null, 2), 'utf-8');
+
+    res.json({
+      success: true,
+      message: 'Backup preventivo automático registrado com sucesso no servidor',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.warn('Erro ao salvar backup no servidor:', err);
+    res.status(500).json({ error: 'Erro ao persistir backup' });
+  }
+});
+
 app.post('/api/clients', async (req, res) => {
   const clientData = req.body;
   if (!clientData || !clientData.name) {

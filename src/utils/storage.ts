@@ -303,6 +303,21 @@ export const getClients = (): Client[] => {
   }
 };
 
+// Automated backup runner with debounce
+let autoBackupTimer: any = null;
+export const scheduleAutoBackup = (isNewSelection = false) => {
+  if (typeof window === 'undefined') return;
+  if (autoBackupTimer) clearTimeout(autoBackupTimer);
+  autoBackupTimer = setTimeout(async () => {
+    try {
+      const { triggerAutoBackup } = await import('./backup');
+      await triggerAutoBackup(undefined, undefined, isNewSelection);
+    } catch (e) {
+      console.warn('Auto backup background task warning:', e);
+    }
+  }, 1200);
+};
+
 export const saveClients = (clients: Client[]): void => {
   memoryClients = clients;
   try {
@@ -312,6 +327,7 @@ export const saveClients = (clients: Client[]): void => {
   }
   notifyStorageUpdate();
   pushFullSyncToServer();
+  scheduleAutoBackup(false);
 };
 
 export const deleteClient = (id: string): void => {
@@ -406,6 +422,7 @@ export const submitPublicSelectionData = async (
       const result = await res.json();
       if (result.client) {
         updateClientByToken(token, () => result.client);
+        scheduleAutoBackup(true);
         return result.client;
       }
     }
@@ -421,6 +438,7 @@ export const submitPublicSelectionData = async (
     selectionSubmittedAt: new Date().toISOString(),
   }));
 
+  scheduleAutoBackup(true);
   return updated || null;
 };
 

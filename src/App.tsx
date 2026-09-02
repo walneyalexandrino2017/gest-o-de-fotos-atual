@@ -4,6 +4,7 @@ import { Sidebar, NavView } from './components/Sidebar';
 import { ToastProvider } from './components/Toast';
 import { ApiSettingsModal } from './components/ApiSettingsModal';
 import { PackageManagementModal } from './components/modals/PackageManagementModal';
+import { BackupManagementModal } from './components/modals/BackupManagementModal';
 import { DashboardView } from './components/views/DashboardView';
 import { CategoriesGalleryView } from './components/views/CategoriesGalleryView';
 import { ClientsView } from './components/views/ClientsView';
@@ -39,6 +40,7 @@ export default function App() {
   const [openCreateCategoryModal, setOpenCreateCategoryModal] = useState(false);
   const [isApiSettingsModalOpen, setIsApiSettingsModalOpen] = useState(false);
   const [isPackageManagementModalOpen, setIsPackageManagementModalOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
   // App Data
   const [categories, setCategories] = useState<Category[]>([]);
@@ -234,6 +236,7 @@ export default function App() {
           clients={clients}
           onOpenApiSettings={() => setIsApiSettingsModalOpen(true)}
           onOpenPackageSettings={() => setIsPackageManagementModalOpen(true)}
+          onOpenBackupSettings={() => setIsBackupModalOpen(true)}
         />
 
         {/* Main Content Area */}
@@ -243,6 +246,7 @@ export default function App() {
             onToggleSidebar={() => setIsSidebarOpenMobile(!isSidebarOpenMobile)}
             activeViewTitle={VIEW_TITLES[currentView]}
             onOpenApiSettings={() => setIsApiSettingsModalOpen(true)}
+            onOpenBackupModal={() => setIsBackupModalOpen(true)}
           />
 
           {/* Main View Container with mobile bottom bar clearance */}
@@ -253,6 +257,7 @@ export default function App() {
                 categories={categories}
                 modelPhotos={modelPhotos}
                 onNavigate={handleNavigate}
+                onOpenBackupModal={() => setIsBackupModalOpen(true)}
               />
             )}
 
@@ -272,6 +277,7 @@ export default function App() {
                 modelPhotos={modelPhotos}
                 onNavigate={handleNavigate}
                 initialOpenCreateModal={openCreateClientModal}
+                onOpenBackupModal={() => setIsBackupModalOpen(true)}
               />
             )}
 
@@ -287,6 +293,7 @@ export default function App() {
                 clients={clients}
                 modelPhotos={modelPhotos}
                 onNavigate={handleNavigate}
+                onOpenBackupModal={() => setIsBackupModalOpen(true)}
               />
             )}
 
@@ -326,6 +333,17 @@ export default function App() {
         <PackageManagementModal
           isOpen={isPackageManagementModalOpen}
           onClose={() => setIsPackageManagementModalOpen(false)}
+        />
+
+        <BackupManagementModal
+          isOpen={isBackupModalOpen}
+          onClose={() => setIsBackupModalOpen(false)}
+          clients={clients}
+          modelPhotos={modelPhotos}
+          onDataRestored={() => {
+            loadData();
+            syncDataFromServer();
+          }}
         />
       </div>
     </ToastProvider>

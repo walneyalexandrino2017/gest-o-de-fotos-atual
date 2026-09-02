@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Settings, Sparkles, Key, Menu, LogOut, User } from 'lucide-react';
+import { Camera, Settings, Sparkles, Key, Menu, LogOut, User, ShieldCheck } from 'lucide-react';
 import { getApiSettings } from '../utils/storage';
 import { ApiSettingsModal } from './ApiSettingsModal';
 import { getAuthState, logoutUser } from '../utils/auth';
@@ -8,12 +8,14 @@ interface HeaderProps {
   onToggleSidebar?: () => void;
   activeViewTitle: string;
   onOpenApiSettings?: () => void;
+  onOpenBackupModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onToggleSidebar,
   activeViewTitle,
   onOpenApiSettings,
+  onOpenBackupModal,
 }) => {
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
   const [apiSettings, setApiSettings] = useState(getApiSettings());
@@ -99,6 +101,19 @@ export const Header: React.FC<HeaderProps> = ({
               {apiSettings.keyTier || 'Gratuito'}
             </span>
           </button>
+
+          {/* Backup Preventivo Button */}
+          {onOpenBackupModal && (
+            <button
+              type="button"
+              onClick={onOpenBackupModal}
+              className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 rounded-xl transition-all cursor-pointer shadow-2xs"
+              title="Backup Preventivo & Exportação JSON (Clientes e Seleções)"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="hidden sm:inline">Backup JSON</span>
+            </button>
+          )}
 
           {/* Settings Trigger Button */}
           <button
