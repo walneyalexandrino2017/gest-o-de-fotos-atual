@@ -798,16 +798,16 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Admin Authentication endpoint (removida senha fixa no código)
+// Admin Authentication endpoint (removidas credenciais fixas no código)
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
-  const masterEmail = process.env.ADMIN_EMAIL || 'alunodosenai3@gmail.com';
+  const masterEmail = process.env.ADMIN_EMAIL;
   const masterPassword = process.env.ADMIN_PASSWORD;
 
-  if (!masterPassword) {
+  if (!masterEmail || !masterPassword) {
     return res.status(500).json({
       success: false,
-      error: 'A senha de administrador não foi configurada no servidor (ADMIN_PASSWORD).',
+      error: 'As credenciais de administrador não foram configuradas no servidor (ADMIN_EMAIL / ADMIN_PASSWORD).',
     });
   }
 
