@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { Redis } from '@upstash/redis';
-import { put } from '@vercel/blob';
+import { put, del } from '@vercel/blob';
 
 dotenv.config();
 
@@ -15,6 +15,44 @@ const __dirname = path.dirname(__filename);
 // Data Directory & Storage Path for local development
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
+
+// Helper to safely delete images from Vercel Blob and/or local storage
+async function deleteBlobImages(urls: (string | undefined | null)[] | string | undefined | null) {
+  if (!urls) return;
+  const rawList = Array.isArray(urls) ? urls : [urls];
+  const validUrls = rawList.filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
+  if (validUrls.length === 0) return;
+
+  const blobToken = (process.env.BLOB_READ_WRITE_TOKEN || '').trim();
+  const vercelBlobUrls: string[] = [];
+
+  for (const url of validUrls) {
+    try {
+      // Check if it's a local upload
+      if (url.startsWith('/api/uploads/')) {
+        const filename = path.basename(url);
+        const localFilePath = path.join(DATA_DIR, 'uploads', filename);
+        if (fs.existsSync(localFilePath)) {
+          fs.unlinkSync(localFilePath);
+        }
+      } else if (url.includes('blob.vercel-storage.com') || url.startsWith('http://') || url.startsWith('https://')) {
+        if (url.includes('blob.vercel-storage.com')) {
+          vercelBlobUrls.push(url);
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao deletar imagem local:', err);
+    }
+  }
+
+  if (blobToken && vercelBlobUrls.length > 0) {
+    try {
+      await del(vercelBlobUrls, { token: blobToken });
+    } catch (err) {
+      console.warn('Erro ao deletar imagens do Vercel Blob:', err);
+    }
+  }
+}
 
 // Initialize Upstash Redis if environment variables are present
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
@@ -204,6 +242,10 @@ app.post('/api/categories', async (req, res) => {
   }
   const idx = memoryStore.categories.findIndex((c) => c.id === category.id);
   if (idx >= 0) {
+    const oldCoverUrl = memoryStore.categories[idx].coverUrl;
+    if (oldCoverUrl && category.coverUrl && oldCoverUrl !== category.coverUrl) {
+      await deleteBlobImages(oldCoverUrl);
+    }
     memoryStore.categories[idx] = { ...memoryStore.categories[idx], ...category };
   } else {
     memoryStore.categories.unshift(category);
@@ -214,10 +256,27 @@ app.post('/api/categories', async (req, res) => {
 
 app.delete('/api/categories/:id', async (req, res) => {
   const { id } = req.params;
+  const categoryToDelete = memoryStore.categories.find((c) => c.id === id);
+  const photosToDelete = memoryStore.modelPhotos.filter((p) => p.categoryId === id);
+
+  const imagesToDelete: string[] = [];
+  if (categoryToDelete?.coverUrl) {
+    imagesToDelete.push(categoryToDelete.coverUrl);
+  }
+  photosToDelete.forEach((p) => {
+    if (p.imageUrl) imagesToDelete.push(p.imageUrl);
+  });
+
   memoryStore.categories = memoryStore.categories.filter((c) => c.id !== id);
   // Also remove photos from this category
   memoryStore.modelPhotos = memoryStore.modelPhotos.filter((p) => p.categoryId !== id);
+
   await persistDb();
+
+  if (imagesToDelete.length > 0) {
+    await deleteBlobImages(imagesToDelete);
+  }
+
   res.json({ success: true });
 });
 
@@ -233,6 +292,10 @@ app.post('/api/model-photos', async (req, res) => {
   }
   const idx = memoryStore.modelPhotos.findIndex((p) => p.id === photo.id);
   if (idx >= 0) {
+    const oldImageUrl = memoryStore.modelPhotos[idx].imageUrl;
+    if (oldImageUrl && photo.imageUrl && oldImageUrl !== photo.imageUrl) {
+      await deleteBlobImages(oldImageUrl);
+    }
     memoryStore.modelPhotos[idx] = { ...memoryStore.modelPhotos[idx], ...photo };
   } else {
     memoryStore.modelPhotos.unshift(photo);
@@ -243,8 +306,15 @@ app.post('/api/model-photos', async (req, res) => {
 
 app.delete('/api/model-photos/:id', async (req, res) => {
   const { id } = req.params;
+  const photoToDelete = memoryStore.modelPhotos.find((p) => p.id === id);
+
   memoryStore.modelPhotos = memoryStore.modelPhotos.filter((p) => p.id !== id);
   await persistDb();
+
+  if (photoToDelete?.imageUrl) {
+    await deleteBlobImages(photoToDelete.imageUrl);
+  }
+
   res.json({ success: true });
 });
 
@@ -345,18 +415,74 @@ app.post('/api/clients', async (req, res) => {
   }
   const index = memoryStore.clients.findIndex((c) => c.id === clientData.id);
   if (index >= 0) {
+    const oldClient = memoryStore.clients[index];
+    const imagesToDelete: string[] = [];
+
+    // Reference photo replaced
+    if (oldClient.referencePhotoUrl && clientData.referencePhotoUrl && oldClient.referencePhotoUrl !== clientData.referencePhotoUrl) {
+      imagesToDelete.push(oldClient.referencePhotoUrl);
+    }
+
+    // Watermarked photos removed
+    if (Array.isArray(oldClient.watermarkedPhotos) && Array.isArray(clientData.watermarkedPhotos)) {
+      const newUrls = new Set(clientData.watermarkedPhotos.map((p: any) => p?.imageUrl));
+      oldClient.watermarkedPhotos.forEach((p: any) => {
+        if (p?.imageUrl && !newUrls.has(p.imageUrl)) {
+          imagesToDelete.push(p.imageUrl);
+        }
+      });
+    }
+
+    // Final photos removed
+    if (Array.isArray(oldClient.finalPhotos) && Array.isArray(clientData.finalPhotos)) {
+      const newUrls = new Set(clientData.finalPhotos.map((p: any) => p?.imageUrl));
+      oldClient.finalPhotos.forEach((p: any) => {
+        if (p?.imageUrl && !newUrls.has(p.imageUrl)) {
+          imagesToDelete.push(p.imageUrl);
+        }
+      });
+    }
+
     memoryStore.clients[index] = { ...memoryStore.clients[index], ...clientData };
+    await persistDb();
+
+    if (imagesToDelete.length > 0) {
+      await deleteBlobImages(imagesToDelete);
+    }
   } else {
     memoryStore.clients.unshift(clientData);
+    await persistDb();
   }
-  await persistDb();
   res.json(clientData);
 });
 
 app.delete('/api/clients/:id', async (req, res) => {
   const { id } = req.params;
+  const clientToDelete = memoryStore.clients.find((c) => c.id === id);
+
   memoryStore.clients = memoryStore.clients.filter((c) => c.id !== id);
   await persistDb();
+
+  if (clientToDelete) {
+    const imagesToDelete: string[] = [];
+    if (clientToDelete.referencePhotoUrl) {
+      imagesToDelete.push(clientToDelete.referencePhotoUrl);
+    }
+    if (Array.isArray(clientToDelete.watermarkedPhotos)) {
+      clientToDelete.watermarkedPhotos.forEach((p: any) => {
+        if (p?.imageUrl) imagesToDelete.push(p.imageUrl);
+      });
+    }
+    if (Array.isArray(clientToDelete.finalPhotos)) {
+      clientToDelete.finalPhotos.forEach((p: any) => {
+        if (p?.imageUrl) imagesToDelete.push(p.imageUrl);
+      });
+    }
+    if (imagesToDelete.length > 0) {
+      await deleteBlobImages(imagesToDelete);
+    }
+  }
+
   res.json({ success: true });
 });
 
@@ -648,6 +774,19 @@ app.post('/api/upload-image', async (req, res) => {
   } catch (err: any) {
     console.error('Erro na rota /api/upload-image:', err);
     return res.status(500).json({ error: err.message || 'Erro ao fazer upload da imagem.' });
+  }
+});
+
+// Delete image endpoint from Vercel Blob / local storage
+app.post('/api/delete-image', async (req, res) => {
+  try {
+    const { url, urls } = req.body;
+    const targetUrls = urls || (url ? [url] : []);
+    await deleteBlobImages(targetUrls);
+    return res.json({ success: true, message: 'Imagem(ns) removida(s) com sucesso.' });
+  } catch (err: any) {
+    console.error('Erro na rota /api/delete-image:', err);
+    return res.status(500).json({ error: err.message || 'Erro ao excluir imagem.' });
   }
 });
 
